@@ -823,8 +823,9 @@ Filtros opcionales:
 - `?tag=briefing` → solo posts con ese tag
 - `?limit=20` → max resultados (default 50)
 - `?prefix=notes/` → solo posts bajo ese folder
+- `?depth=N` (Sprint 5, 2026-05-25) → tree shape jerárquico en vez de flat
 
-Response:
+Response (flat, sin `?depth` o con `?depth=1`):
 ```json
 {
   "user": "joni",
@@ -843,6 +844,63 @@ Response:
     ...
   ]
 }
+```
+
+### Tree response con `?depth=2` (hojas dentro de hojas)
+
+**Cuándo usarlo:** cuando querés entender la ESTRUCTURA jerárquica del namespace de un saque, sin tirar N llamadas a `GET /api/folders/<prefix>`. Una request, contexto completo.
+
+```http
+GET https://api.out-box.dev/api/list?depth=2
+Authorization: Bearer outbox_xxxx
+```
+
+Response:
+```json
+{
+  "user": "joni",
+  "count": 12,
+  "depth": 2,
+  "tree": [
+    {
+      "type": "leaf-with-children",
+      "slug": "clientes",
+      "title": "Overview clientes",
+      "visibility": "unlisted",
+      "childCount": 8,
+      "omitted": 5,
+      "children": [
+        {
+          "type": "leaf-with-children",
+          "slug": "clientes/solera",
+          "childCount": 3,
+          "omitted": 0,
+          "children": [
+            { "type": "leaf", "slug": "clientes/solera/q2", "title": "Q2 Report", ... }
+          ]
+        },
+        { "type": "leaf", "slug": "clientes/overview", "title": "Overview" }
+      ]
+    },
+    { "type": "leaf", "slug": "today", "title": "Today briefing" }
+  ]
+}
+```
+
+**Tipos de nodo:**
+- `"leaf"` — hoja sin descendientes. Equivale a un post leaf, lo que llamábamos "post" hasta hoy.
+- `"leaf-with-children"` — hoja que también contiene otras hojas en su prefijo. Puede o no tener HTML propio publicado. Si lo tiene, `title`/`visibility`/`createdAt` vienen del HTML propio. Si no, `visibility` es `null` (es solo agrupador emergente).
+
+**Reglas clave:**
+- `childCount` = total descendientes recursivo del nodo.
+- `children[]` = hijos directos incluidos en este response (max 3 por default — `previewLimit`).
+- `omitted` = hijos directos que NO se incluyeron por `previewLimit`. Si querés verlos todos, llamás `GET /api/folders/<slug>?depth=2` para esa rama puntual.
+- `depth=1` es flat (compat). `depth=2` es 1 nivel de hijos. `depth=3` es 2 niveles. Max `depth=3`.
+
+**Desde CLI:**
+```bash
+outbox list --tree           # alias de --depth 2
+outbox list --depth 3        # 2 niveles de anidación
 ```
 
 ### Search por title/slug/tag
@@ -884,7 +942,11 @@ Authorization: Bearer outbox_xxxx
 
 **Borra todas las versiones**. Si querés solo "ocultar", usar visibility en vez de delete. **Antes de borrar, confirmar con el usuario** ("¿seguro? Esto es irreversible").
 
-### Generar share link (post privado con URL temporal pública)
+### Generar share link (URL temporal para no-users)
+
+**Trigger:** "compartilo con el cliente como link", "armame un link público de esto", "necesito mandar este post a alguien que no tiene cuenta de Outbox", "link compartible con expiración".
+
+**Cuándo conviene:** un PM/agente quiere mandar el link a un cliente o tercero que no tiene cuenta de Outbox. El share token le permite ver el post (aunque sea `private`) por un período acotado, sin tener que cambiar la visibility ni crear cuentas.
 
 ```http
 POST https://api.out-box.dev/api/share
@@ -892,20 +954,137 @@ Authorization: Bearer outbox_xxxx
 Content-Type: application/json
 
 {
+  "resource": "notes-hoy",
   "resourceType": "post",
-  "slug": "notes-hoy",
-  "ttlSeconds": 86400
+  "expiresInDays": 7
 }
 ```
 
 Response:
 ```json
-{ "token": "abc12345...", "expiresAt": "2026-05-21T..." }
+{
+  "token": "abc12345...",
+  "url": "https://out-box.dev/u/joni/notes-hoy?share=abc12345...",
+  "resource": "notes-hoy",
+  "resourceType": "post",
+  "expiresAt": "2026-05-32T..."
+}
 ```
 
-URL para compartir: `https://out-box.dev/u/joni/notes-hoy?share=abc12345...`
+**Reglas clave:**
+- `resourceType: "post"` → token vale solo para ese slug específico.
+- `resourceType: "folder"` → token vale para CUALQUIER hijo del folder (cascade automático). Útil para "mostrale toda la carpeta `clientes/solera` al cliente".
+- `expiresInDays`: 1-365 enteros, o `null` para nunca expirar. Default 7.
+- El visitor con la URL puede ver el contenido aunque sea `private`. **Override intencional de visibility.**
 
-Útil para mandarle un link a alguien sin tener que cambiar el post a `public`.
+### Mismo flow desde CLI (Sprint 5 · 2026-05-25)
+
+```bash
+outbox share notes-hoy                              # default 7 días
+outbox share notes-hoy --expires-in-days 30
+outbox share clientes/solera --folder               # cascade a hijos
+outbox share notes-hoy --never                      # sin expiración (cuidado)
+outbox share list                                   # ver tokens activos
+outbox share revoke <token>                         # revocar uno específico
+```
+
+El CLI copia la URL al clipboard automáticamente y muestra warning sobre que cualquiera con el link puede ver el contenido.
+
+---
+
+## Flow 6.5: Compartir con otro user de Outbox (Sprint 5 · Track C · 2026-05-25)
+
+**Trigger:** "compartí este post con ariel", "dale acceso a este folder a mi colega tal", "necesito que pedro vea mi carpeta clientes/solera", "share with a user".
+
+**Diferencia con share token (Flow 6):** el share token es un link público para no-users. **Grants** son para users de Outbox que vos querés que vean el recurso. El recipient necesita autenticarse con su propia Bearer key o session — el recurso entra en su `/library/shared-with-me`.
+
+### Crear grant
+
+```http
+POST https://api.out-box.dev/api/grants
+Authorization: Bearer outbox_xxxx (la tuya, owner)
+Content-Type: application/json
+
+{
+  "recipientUser": "ariel",
+  "resource": "clientes/solera/q2",
+  "resourceType": "post",
+  "permissions": ["view"],
+  "expiresInDays": 30,
+  "message": "Para revisar antes de Q3"
+}
+```
+
+Response:
+```json
+{
+  "id": "a7f9c2b1d3e4f5a6",
+  "ownerUser": "joni",
+  "recipientUser": "ariel",
+  "resource": "clientes/solera/q2",
+  "resourceType": "post",
+  "permissions": ["view"],
+  "createdAt": "2026-05-25T12:00:00Z",
+  "expiresAt": "2026-06-24T12:00:00Z",
+  "message": "Para revisar antes de Q3"
+}
+```
+
+**Reglas clave:**
+- `recipientUser` debe ser un user **existente** en Outbox → 404 si no.
+- `resource` debe pertenecer al caller (owner) → 403 si intentás grantear algo que no es tuyo.
+- `recipientUser === ownerUser` → 400 (no self-grants).
+- `resourceType: 'folder'` → cascade automático a todos los hijos del folder.
+- `permissions` v1 solo acepta `['view']`. Futuro: `'comment'`, `'edit'`.
+- `expiresInDays`: 1-365 enteros, o `null` para nunca expirar. Default 30.
+- El grant **override** la visibility del recurso (el recipient puede ver aunque sea `private`).
+
+### Listar grants (outgoing/incoming)
+
+```http
+# Owner: grants que diste
+GET https://api.out-box.dev/api/grants
+
+# Recipient: grants que recibiste
+GET https://api.out-box.dev/api/grants?incoming=1
+```
+
+### Revocar
+
+```http
+DELETE https://api.out-box.dev/api/grants/<grantId>
+```
+
+Solo el owner puede revocar. El recipient pierde acceso inmediatamente.
+
+### Ver lo compartido conmigo en `/api/list`
+
+```http
+GET https://api.out-box.dev/api/list?shared=1
+GET https://api.out-box.dev/api/list?shared=1&depth=2   # combina con Track A
+```
+
+Cada post incluye `sharedBy: "ownerUser"` y `grantId` para que el front muestre atribución.
+
+### Desde CLI
+
+```bash
+outbox grants give ariel clientes/solera/q2 --message "Para Q3"
+outbox grants give ariel clientes/solera --folder --expires-in-days 7
+outbox grants list                   # outgoing
+outbox grants incoming               # incoming
+outbox grants revoke <id>
+```
+
+### Cuándo usar grant vs share token
+
+| Caso | Recomendación |
+|---|---|
+| Mandarle el link a un cliente sin cuenta de Outbox | **share token** (Flow 6) |
+| Colaborar con un colega que YA tiene cuenta de Outbox | **grant** |
+| Quiero saber quién entró al recurso | **grant** (audit log con recipient) |
+| El link puede leakear y no me importa | **share token** |
+| Quiero revocar acceso a UN user específico | **grant** |
 
 ---
 
