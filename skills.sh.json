@@ -1,0 +1,12 @@
+{
+  "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
+  "groupings": [
+    {
+      "title": "Outbox",
+      "description": "Skills for using Outbox (out-box.dev) from your AI agent — publish HTMLs to your private library, read and modify existing posts, manage API keys, and more.",
+      "skills": [
+        "outbox-publish"
+      ]
+    }
+  ]
+}
