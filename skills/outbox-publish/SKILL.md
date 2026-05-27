@@ -3,10 +3,27 @@ name: outbox-publish
 description: Publica, lee, actualiza y gestiona HTMLs en Outbox (out-box.dev) — la biblioteca privada en línea agents-first del usuario. Trigger cuando el usuario diga "publicá esto en mi Outbox", "mandá a Outbox", "subí a out-box.dev", "qué tengo en notas de hoy", "actualizá mi briefing", "leé mi Outbox y agregale X", "armame el link de Outbox", "qué publiqué", "borrá X de Outbox", o cualquier referencia a leer, escribir, actualizar o gestionar contenido publicado en su espacio personal. También cuando el usuario quiera emitir API keys para agentes que vayan a publicar en su nombre, configurar templates, cambiar visibility de un post, generar share links, o ver qué publicó previamente. Outbox es agents-first — el caso de uso central es agentes que durante el día leen un HTML existente, le suman contexto/información, y lo re-publican (versioning automático). Esta skill cubre todos esos flows.
 metadata:
   author: jonathanleiva15
-  version: "1.0.0"
+  version: "1.1.0"
   homepage: https://out-box.dev
   repository: https://github.com/jonathanleiva15/out-box-skills
 ---
+
+<!-- CHANGELOG
+v1.1.0 · 2026-05-27 — Reflejar 5 bugs fixeados + feature publishedByLabel:
+  - Bug A: serve respeta meta.visibility (no aplica mostRestrictive — sección 6).
+  - Bug B + 8 residuales: folder-scoped keys funcionan en TODOS los verbs (sección 6.1
+    tabla expandida con publish/delete/list/folder/share/template).
+  - Bug C: cookie session reconocida en endpoints públicos (sección 6.2 nueva).
+  - Bug D (P0): tier:'team' bloqueado con 503 team_early_access (tabla de errores).
+  - publishedByLabel auto-enriquecido desde key.label (sección 6.3 nueva).
+  - Audit endpoint con 5 kinds nuevos: visibility_change, key_rotate, share_create,
+    share_revoke, agent_instantiate.
+  - Recomendación fuerte: incluir `summary` en cada publish (sección Paso 2.5).
+  - Endpoint nuevo: GET /api/admin/scan-exposed (admin:self, diagnóstico).
+
+v1.0.0 · 2026-05-25 — Sprint 5: tree API + share tokens + grants user-to-user.
+-->
+
 
 # outbox-publish
 
@@ -164,16 +181,21 @@ Por prioridad:
 
 Si el usuario dice "lo que sea": defaults razonables (title inferido del `<h1>` o `<title>`, slug auto, private, sin Slack).
 
-### Paso 2.5 — Metadata para análisis (NUEVO, recomendado)
+### Paso 2.5 — Metadata para análisis (RECOMENDADO — 2026-05-27 update)
 
-Si tu agente sabe qué modelo está usando, qué tipo de contenido es y puede generar un resumen breve, pasalo. Esto enriquece search, dashboards y analytics.
+Si tu agente sabe qué modelo está usando, qué tipo de contenido es y puede generar un resumen breve, **pasalo siempre**. Esto enriquece search, dashboards, analytics, feeds, y permite que el owner sepa qué/quién publicó cada post sin abrirlo.
 
-Campos nuevos opcionales (todos top-level del body):
+**Convención fuerte (recomendado siempre):**
 - `model` — qué modelo IA generó esto (ej: `"claude-sonnet-4.7"`, `"gpt-4o"`, `"gemini-2.5-flash"`). Max 64 chars.
-- `contentType` — tipo de contenido. Sugeridos: `briefing`, `report`, `notes`, `post`, `mockup`, `data-viz`, `summary`, `other`. String libre con regex `[a-z0-9_-]{1,40}`.
-- `summary` — resumen breve estilo tweet, max 280 chars. Aparece en feeds RSS, previews y search.
+- `summary` — **resumen breve estilo tweet, max 280 chars**. Aparece en feeds RSS, previews, search ranking (+4 si matchea query), y listings. Es lo que el owner ve en `/library` para escanear sus posts sin abrirlos.
+- `contentType` — tipo de contenido. Sugeridos: `briefing`, `report`, `notes`, `post`, `mockup`, `data-viz`, `summary`, `release-note`, `other`. String libre con regex `[a-z0-9_-]{1,40}`. Search score +6 exact match.
+
+**Campos opcionales:**
 - `description` — descripción larga, max 2000 chars.
-- `meta` — escape hatch `Record<string, string | number | boolean>`. Max 10 keys. Útil para `tokens_used`, `cost_usd`, `prompt_hash`, etc.
+- `meta` — escape hatch `Record<string, string | number | boolean>`. Max 10 keys. Útil para `tokens_used`, `cost_usd`, `prompt_hash`, `session_type`, etc.
+
+**Auto-enriquecido por el back (NO lo mandes en el body):**
+- `publishedByLabel` — viene del `KeyRecord.label` de tu key, o `"browser-session"` si publicaste con cookie session. Permite que los listings muestren "publicado por <agente>" automáticamente. Ver sección 6.3 de detalles técnicos.
 
 Ejemplo:
 ```json
@@ -203,9 +225,14 @@ Content-Type: application/json
   "tags": ["briefing", "daily"],
   "visibility": "private",
   "notifySlack": "#joni-briefings",
-  "branding": "full"
+  "branding": "full",
+  "model": "claude-sonnet-4.7",
+  "summary": "Mails procesados: 12. Prioridades del día: 3 PRs a revisar, reunión con cliente Solera 10am, deploy Outbox v0.4.",
+  "contentType": "briefing"
 }
 ```
+
+> ⚠️ **NO incluyas `publishedByLabel` en el body** — el back lo enriquece auto desde tu `KeyRecord.label`. Si lo mandás, se ignora silenciosamente (defense in depth contra spoofing).
 
 **Campos importantes:**
 
@@ -237,7 +264,16 @@ Content-Type: application/json
 ### Paso 5 — Responder al usuario
 
 > ✅ Publicado en `https://out-box.dev/u/joni/briefing-hoy` (v1, private).
+> *Briefing del lunes — 12 mails procesados, 3 PRs prioritarios, reunión Solera 10am.*
 > OG card lista para Slack/Twitter. Te quedan 19 publish/h, 99/día.
+
+**Patrón recomendado para confirmar al usuario** (2026-05-27):
+- Confirmá la URL + visibility + versión
+- Incluí el `summary` (1-2 líneas, italic) — recuerda al user qué publicó sin que abra el link
+- Mencioná el agente publishing si el flow fue automático (ej. "publicado por *briefing-matutino-bot*")
+- Quota restante al final
+
+Esto se alinea con el `publishedByLabel` que el back persiste auto — cuando el user vea `/api/list`, los listings van a mostrar el mismo identificador.
 
 ---
 
@@ -1284,8 +1320,15 @@ El sistema:
 | 401 | `key_expired` | `expiresAt` ya pasó | "La key venció. Emití una nueva con `pcpub keys gen-agent`." |
 | 403 | `forbidden` | Falta scope | "Tu key no tiene scope para esto. Mostrame los scopes con `pcpub whoami`" |
 | 403 | `slug_not_allowed` | Slug fuera de whitelist | "Este agente solo puede publicar en: {whitelist}" |
-| 403 | `slug_not_under_allowed_folder` | Sprint 1 — key folder-scoped y slug cae fuera | "Tu key solo puede publicar bajo {folders}. Mové el slug o pedí una key con otro folder." |
+| 403 | `slug_not_under_allowed_folder` | Sprint 1 + Bug B residual fix 2026-05-26 — key folder-scoped y slug/resource cae fuera. Aplica a publish/delete/list/visibility/rollback/daily/append + endpoints de folder/share/grants con folder-scoped keys. | "Tu key solo puede operar bajo {folders}. Mové el slug o pedí una key con otro folder." |
 | 403 | `scope_escalation` | Sprint 4 — intento de emitir key con scope que el caller no cubre | "No podés emitir keys con ese scope porque tu key no lo tiene. Es prevención de privilege escalation." |
+| 503 | `team_early_access` | **Bug D fix 2026-05-26** — checkout de `tier:'team'` bloqueado hasta que exista el workspace model. | "Team tier en early access — contactanos a hola@out-box.dev. Mientras tanto, Pro o Pro+ están disponibles." |
+| 400 | `invalid_resource` | grants/share — `body.resource` no es un slug válido | "El campo `resource` debe ser un slug válido (max 64 chars/segmento, regex [A-Za-z0-9_-/])" |
+| 400 | `invalid_resourceType` | grants/share — `body.resourceType` no es `post` ni `folder` | "resourceType debe ser exactamente 'post' o 'folder'" |
+| 400 | `invalid_permissions` | grants — v1 solo acepta `['view']` | "v1 de grants solo soporta permissions=['view']. 'comment' y 'edit' vienen en v2." |
+| 404 | `recipient_not_found` | grants — el `recipientUser` no existe en Outbox | "El user '{recipient}' no existe. Verificá el username o pedile que se registre primero." |
+| 403 | `resource_not_owned` | grants — el resource no pertenece al caller | "Solo podés grantear recursos que vos publicaste." |
+| 400 | `self_grant_not_allowed` | grants — recipientUser === principal.user | "No tiene sentido grantear algo a vos mismo. Si querés compartir externamente, usá share token." |
 | 413 | `html_too_large` | HTML > 5MB | "Achicá el HTML o publicá en partes" |
 | 413 | `data_too_large` | Sprint 3 — `data` en publish-from-template > 64KB | "Achicá el JSON o partí en varios publishes" |
 | 429 | `rate_limited` | Quota hit | "Quota máxima — reintentá en {retryAfter}s" |
@@ -1371,25 +1414,70 @@ Si el user tiene `_template.html` configurado, **todos** los publishes lo aplica
 
 Cada `POST /publish` al mismo slug crea una nueva versión. **No hay forma de "editar" sin crear versión nueva** (intencional — `nothing is lost`).
 
-### 6. Visibility default es `private` — PERO hereda del folder si existe
+### 6. Visibility default es `private` — herencia SOLO al publicar (body wins en serve)
 
-**Sprint 2 update (2026-05-24):** la resolución de visibility ahora sigue este orden:
+**Sprint 2 update (2026-05-24) + Bug A fix (2026-05-26):**
+
+**Al publicar** (`POST /publish`), la resolución de visibility sigue este orden:
 
 1. Si `body.visibility` viene (válida) → usa esa (override siempre permitido).
 2. Sino, busca el folder ancestor más cercano con metadata (`_folder.json` con `visibility`). Si lo encuentra → hereda.
 3. Sino → fallback `private`.
 
-Ejemplo: si existe `_folder.json` para `clientes/` con `visibility: unlisted`, y el agente publica `clientes/solera/q2` SIN pasar visibility, el post queda **unlisted**. Importante para PMs que ponen un folder entero como unlisted y dejan que sus agentes publiquen dentro sin tocar cada post.
+Ejemplo: si existe `_folder.json` para `clientes/` con `visibility: unlisted`, y el agente publica `clientes/solera/q2` SIN pasar visibility, el post queda **unlisted**.
 
-Si el agente quiere FORZAR algo distinto al folder (e.g. publicar algo private en un folder public), debe pasar `visibility` explícito en el body.
+**Al servir** (`GET /<user>/<slug>`), el back respeta `meta.visibility` tal cual fue persistido — NO re-aplica la herencia del folder dinámicamente. Esto permite el caso "folder private + post puntual unlisted compartible": el folder define el default al publicar, pero el post puede tener visibility distinta si el agente la pasó explícita.
 
-### 6.1. Folder-scoped keys (Sprint 1)
+> ⚠️ **Cambio de comportamiento del 2026-05-26** (Bug A fix): antes el serve aplicaba `mostRestrictive(post, folder)` y un post `unlisted` bajo folder `private` se servía como private (404 sin auth). Ahora se sirve correctamente como unlisted (200 con URL). Si el use case requiere cascade estricta, cambiar la visibility del folder cierra acceso a TODOS los posts via `PUT /api/folders/<X>` para invalidar el cache CDN.
 
-Si la key del agente tiene scope `publish:user:f/<folder>` (folder-restricted), **solo puede publicar/borrar/listar bajo ese folder**. Intentar publicar en otro folder → 403 `slug_not_under_allowed_folder`. El listado (`/api/list`) filtra silenciosamente.
+### 6.1. Folder-scoped keys (Sprint 1 + post-PR-11 + Bug B residual fix 2026-05-26)
+
+Si la key del agente tiene scope `<verb>:user:f/<folder>` (folder-restricted), **solo puede operar bajo ese folder**. Intentar fuera → 403 `slug_not_under_allowed_folder`.
+
+**Verbs soportados con folder-scope (2026-05-26 update):**
+
+| Verb | Endpoints | Bug B residual fix |
+|------|-----------|-------------------|
+| `publish:user:f/X` | POST /publish, POST /api/publish-from-template, POST /api/u/.../rollback, POST /api/u/.../append (daily), PUT /api/u/.../visibility | ✓ |
+| `delete:user:f/X` | DELETE /api/u/..., DELETE /api/u/.../blocks/... | ✓ |
+| `list:user:f/X` | GET /api/list (filter), GET /api/folders (filter), GET /api/u/.../blocks, GET /api/u/.../dailies | ✓ |
+| `folder:user:f/X` (PR #11 fino) | PUT/DELETE /api/folders/X (acepta también `template:user` legacy) | ✓ |
+| `share:user:f/X` (PR #11 fino) | POST /api/share (resource debe estar bajo X) | ✓ |
+| `template:user:f/X` (legacy super-scope) | POST /api/grants (resource bajo X) + retrocompat con folder/share | ✓ |
 
 **Cross-verb contagion**: si una key tiene CUALQUIER scope `f/...` (en cualquier verb), TODOS sus verbs quedan folder-restricted. Defense in depth — una agent key con `publish:f/clientes + delete:user:own` no puede borrar fuera de `clientes/` aunque su scope delete sea broad.
 
 Para listar las keys propias con scopes legibles, hacer `GET /api/keys` — la respuesta trae `scopesDisplay` parseado: `{ verb, user, folder, modifier }` por scope.
+
+### 6.2. Cookie session reconocida en endpoints públicos (Bug C fix 2026-05-26)
+
+Endpoints públicos que respetan visibility (`/u/<user>/<slug>`, `/<user>/<slug>`, `/api/u/.../search`, `/api/u/.../manifest`, `/api/u/.../recent`, `/<user>/feed.xml`) ahora reconocen TANTO Bearer key COMO cookie `outbox_session`.
+
+Antes del fix, el owner logueado en `out-box.dev` (con cookie session activa) NO podía ver sus propios posts `private` desde el browser — recibía 404 a menos que pasara `Authorization: Bearer`. Y los grants user-to-user vía browser nunca funcionaban (el recipient con session se ignoraba). Ahora todo funciona consistente.
+
+**Implicación práctica para agentes IA**: si tu agente publica con Bearer key, todo funciona como antes. Si recomendás al user "abrí esta URL en tu browser", asumí que su sesión browser será reconocida.
+
+### 6.3. publishedByLabel auto-enriquecido (2026-05-27)
+
+Cada `POST /publish` ahora persiste automáticamente `publishedByLabel` en el meta del post, derivado del label de la key/session. **El agente NO lo manda** — el back lo lee de su propia key (defense in depth contra spoofing).
+
+```json
+// .meta.json del post (ejemplo)
+{
+  "slug": "briefing-hoy",
+  "owner": "joni",
+  "publishedByLabel": "briefing-matutino-bot",  // ← auto, viene de KeyRecord.label
+  "model": "claude-sonnet-4.7",                 // ← lo pasaste vos en el body
+  "summary": "...",
+  ...
+}
+```
+
+- **Agent key con label**: `publishedByLabel: <KeyRecord.label>` (ej. `"briefing-matutino-bot"`)
+- **Session browser** (UI logueado): `publishedByLabel: "browser-session"`
+- **Posts pre-2026-05-27**: campo `undefined` (compat — no rompe nada)
+
+Disponible en `.meta.json`, `GET /api/list` response, `GET /api/u/.../search` y feed JSON. Habilita que los listings muestren "publicado por <agente>" sin que cada agente lo recuerde.
 
 ### 7. Slugs jerárquicos permitidos
 
@@ -1429,6 +1517,8 @@ Si tu agente corre en otro dominio, no podrá hacer requests directas — necesi
 | `/api/keys` | GET/POST | Bearer | Listar / emitir keys. GET devuelve `scopesDisplay` parseado (Sprint 1). |
 | `/api/keys/agent` | POST | Bearer | **Sprint 4** — Shortcut agent key efímera: `{ label, folder?, days?, verbs? }` |
 | `/admin/revoke` | POST | Bearer | Revocar key |
+| `/api/admin/scan-exposed` | GET | Bearer (scope `admin:self`) | **2026-05-26** — herramienta diagnóstica. Devuelve lista de posts con `meta.visibility=A` bajo folder ancestor con `visibility=B` (query params `?post_visibility=&folder_visibility=`). Read-only. Útil para auditorías post-migración del modelo de visibility. |
+| `/api/audit` | GET | Bearer (scope `audit:self`) | Sprint 15.A + audit emitters fix 2026-05-26 — filter `?kind=` acepta: `publish`, `delete`, `visibility_change`, `key_rotate`, `share_create`, `share_revoke`, `agent_instantiate`, `grant_create`, `grant_revoke`, `grant_used`, etc. Lista completa en `lib/audit.ts::AUDIT_ACTIONS`. |
 | `/api/schedules` | GET/POST/DELETE | Bearer | Agendar ejecuciones de agents (Sprint 15) |
 | `/api/u/:u/agents` | GET | Opcional | Manifest público de agentes del user |
 | `/api/agents/registry` | GET | Opcional | Listar agents `discoverable: true` de TODOS los users (Sprint 16) |
