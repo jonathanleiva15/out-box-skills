@@ -218,7 +218,8 @@ Agrega un bloque fechado a un daily. **Scope** `publish:u` + quota + tier
   "model": "...", "summary": "...", "contentType": "..."  // ContentMeta manifest-level (1er append)
 }
 ```
-Respuesta: `{ blockId (blk_*), totalBlocks, url, version }`.
+Respuesta: `{ blockId (blk_*), totalBlocks, version, url, date }` — `date` es la
+clave del dia UTC (`YYYY-MM-DD`) en que cayo el bloque (la rotacion es por fecha UTC).
 Error `409 conflict_with_static_post` si el slug ya es un HTML estatico.
 
 ### GET /api/u/&lt;user&gt;/&lt;slug&gt;/blocks?date=YYYY-MM-DD
@@ -235,8 +236,16 @@ Borra un bloque (`blockId` con prefijo `blk_`). **Scope** `delete:u`.
 ## Listado y busqueda
 
 ### GET /api/list
-Lista paginas del owner. **Scope** `list:u`. Query: `?tag=`, `?limit=`, `?depth=`
-(arbol de folders con hijos), `?shared=1` (incluye recursos compartidos).
+Lista paginas del owner. **Scope** `list:u`. Query:
+- `?tag=` — filtra por tag · `?limit=` — 1-200 (default 50).
+- `?depth=` — entero en **[1, 3]** (fuera de rango → `400 invalid_depth`). `depth=1`
+  (default): shape `{ ..., posts: [] }`. `depth>=2`: `{ ..., depth, tree: [] }`.
+- `?shared=1` — recursos compartidos con el caller (cada item trae `sharedBy`).
+- `?cursor=` — cursor opaco de R2 para paginar.
+
+Respuesta (depth=1): `{ user, count, truncated, cursor, posts }`. **`cursor`** es el
+cursor de la proxima pagina o `null` si no hay mas; `truncated = (cursor !== null)`.
+Para traer todo, repetir con `?cursor=<cursor>` hasta `cursor: null`.
 
 ### GET /api/u/&lt;user&gt;/search?q=&lt;query&gt;
 Busca por metadata (title/slug/tags, no fulltext). Publico (el owner ve sus
@@ -305,8 +314,9 @@ Link secreto para no-users (sin volver la pagina publica). **Scope** `share:u` o
   "expiresInDays": 7                   // default 7; null = permanente; rango 1-365
 }
 ```
-Link: `https://out-box.dev/<user>/<slug>?share=<token>`. Token de folder cascade a
-descendientes.
+Respuesta: `{ token, url, ... }`. El `url` se devuelve **CON `/u/`**:
+`https://out-box.dev/u/<user>/<slug>?share=<token>` (ese prefijo 301-redirige al
+canonico sin `/u/`, preservando el `?share`). Token de folder cascade a descendientes.
 
 #### GET /api/share
 Lista tokens propios. **requireAuth**.

@@ -242,6 +242,10 @@ Content-Type: application/json
 }
 ```
 
+Respuesta: `{ blockId, totalBlocks, version, url, date }` — `date` es la clave del
+dia UTC (`YYYY-MM-DD`) en que quedo el bloque (auto-rotacion por fecha UTC); usala
+para leer ese dia con `?date=`.
+
 > Gotcha: append a un slug que YA es un HTML estatico → `409
 > conflict_with_static_post`. Daily y pagina estatica son mutuamente excluyentes
 > por slug.
@@ -290,8 +294,17 @@ detectar cambios sin re-leer todo:
 
 ### 9. Listar la biblioteca
 
-`GET /api/list` — scope `list:u`. Query: `?tag=`, `?limit=`, `?depth=` (arbol de
-folders con hijos), `?shared=1` (incluye recursos compartidos).
+`GET /api/list` — scope `list:u`. Query:
+- `?tag=` — filtra por tag.
+- `?limit=` — 1-200 (default 50, clamp).
+- `?depth=` — **entero en [1, 3]** (fuera de rango → `400 invalid_depth`). `depth=1`
+  (default) devuelve la shape historica `{ ..., posts: [] }`; `depth>=2` devuelve un
+  arbol de folders con hijos en `{ ..., depth, tree: [] }`.
+- `?shared=1` — incluye recursos compartidos con vos (cada item trae `sharedBy`).
+- `?cursor=` — **paginacion**: cursor opaco de R2. La respuesta trae el campo
+  `cursor` con el cursor de la PROXIMA pagina (o `null` si no hay mas); `truncated`
+  es `true` mientras `cursor !== null`. Para traer todo, repetir con `?cursor=<cursor>`
+  hasta que `cursor` sea `null`.
 
 ### 10. Subir imagenes (uploads)
 
@@ -318,8 +331,10 @@ Tres mecanismos distintos, con nombres propios:
    ```json
    { "resource": "<slug-o-prefijo>", "resourceType": "post", "expiresInDays": 7 }
    ```
-   Devuelve un token; el link es `https://out-box.dev/<user>/<slug>?share=<token>`.
-   Un token de folder cascade a sus descendientes. Listar: `GET /api/share`.
+   Devuelve un token y el link en `url`: `https://out-box.dev/u/<user>/<slug>?share=<token>`
+   (la API lo devuelve **CON `/u/`**; ese prefijo 301-redirige al canonico sin `/u/`,
+   conservando el `?share`). Un token de folder cascade a sus descendientes.
+   Listar: `GET /api/share`.
    Revocar: `DELETE /api/share/<token>` — **scope `admin:self`** (asimetria: crear
    pide `share:u`, revocar pide `admin:self`).
 3. **Dar acceso** (Grant user-to-user) — para alguien que **SI tiene cuenta** en
