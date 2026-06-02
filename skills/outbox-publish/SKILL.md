@@ -37,7 +37,7 @@ ellas. Mencionalas si al usuario le conviene otra:
   `outbox export`, etc.). Lee la key de `~/.outboxrc`.
 - **Skill** `outbox-publish` (esta) — para agentes con skills: haces los requests
   HTTP que se describen aca.
-- **MCP** (`@outbox/mcp`, **23 tools**) — server MCP local (stdio) para clientes
+- **MCP** (`@outbox/mcp`, **27 tools**) — server MCP local (stdio) para clientes
   MCP (Claude Desktop, Cursor). Se lanza con `npx -y @outbox/mcp` y autentica con
   `OUTBOX_API_KEY` o `~/.outboxrc`. Tools tipo `outbox_publish`, `outbox_read`,
   `outbox_export`, `outbox_capabilities`, etc.
@@ -407,6 +407,33 @@ Para entornos sin browser (SSH, contenedor, cron):
 - Auditoria de mis acciones: `GET /api/audit` — scope `audit:self`. Ventana 7 dias,
   cursor `before` + `limit`. El campo de accion se expone como `kind` (filtrable con
   `?kind=publish,delete`).
+
+### 16. Comentarios y sugerencias
+
+Capa de **anotaciones** sobre una pagina publicada. El HTML del owner NUNCA se modifica por
+comentar; los comentarios viven aparte (`<user>/<slug>.comments.jsonl`) y anclan por texto
+(W3C Web Annotation). SOLO **aceptar una sugerencia** (accion del owner) publica una version
+nueva atribuida. Dos `kind`: `comment` (anotacion pura) y `suggestion` (propone reemplazar el
+texto anclado `anchor.exact` por `replacement`).
+
+**Flujo agente (3 pasos):**
+
+1. Leer: `GET /api/u/<user>/<slug>/export?format=json` (campo `contenido`) o el HTML servido.
+2. Proponer: `POST /api/u/<user>/<slug>/comments` con
+   `{ "kind": "suggestion", "anchor": { "exact": "<texto visible a reemplazar>", "prefix": "...", "suffix": "..." }, "replacement": "<texto nuevo>", "body": "<por que>" }`.
+   `anchor.exact` + `replacement` son OBLIGATORIOS para una suggestion (si no: `400 suggestion_requires_anchor` / `suggestion_requires_replacement`). El ancla matchea por **texto VISIBLE (tag-aware)**: pasas el texto tal como se LEE en el documento y el back lo localiza contra el HTML aunque haya tags/entidades en el medio (no tenes que reproducir el markup). `prefix`/`suffix` desambiguan si el texto se repite.
+3. El owner acepta: `POST /api/u/<user>/<slug>/comments/<id>/accept` → aplica el reemplazo (HTML-escapado). Devuelve `{ ok, comment, version, noChange }`. **No siempre publica `vN+1`**: si el reemplazo NO cambia el HTML resultante, el back aplica un **no-op guard** y devuelve `{ ..., noChange: true }` — marca la sugerencia como aceptada pero **NO crea version nueva**. Solo si el HTML efectivamente cambia se publica `vN+1` (atribuida: quien propuso + quien acepto).
+
+**Leer / moderar:**
+
+- `GET /api/u/<user>/<slug>/comments` → `{ postOwner, slug, count, openCount, comments[] }`. Filtra `status=open` para pendientes.
+- `POST .../comments/<id>/{accept|discard|resolve}` — **owner-only** (`403` si no). `accept` solo sobre suggestions.
+
+**Permisos:** owner + sus agentes siempre; un tercero necesita grant `comment` (o `?share`) en privados; cualquier user autenticado en unlisted/public; anonimo con `?share`.
+
+**Gotchas:** `409 anchor_not_found` si el texto ancla ya no esta / cambio (descarta la sugerencia con `discard`); el matching es por texto visible, no por offset literal, asi que tags alrededor del ancla no rompen el accept; el reemplazo se rechaza si cae dentro de un tag HTML (anti-XSS); hilos de 1 nivel (`parentId`, las respuestas son siempre `kind=comment`). Senial de descubrimiento: `openComments` en `GET /api/list`.
+
+Via MCP: `outbox_read_comments`, `outbox_create_suggestion`, `outbox_accept_suggestion`, `outbox_discard_suggestion`.
 
 ---
 

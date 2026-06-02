@@ -28,7 +28,7 @@ pasa en el body).
 ## Las 3 vias de usar Outbox
 
 Esta skill es una de tres formas equivalentes de operar Outbox desde un agente:
-**CLI** (`outbox ...`), **skill** (esta) y **MCP** (`@outbox/mcp`, 23 tools). Las
+**CLI** (`outbox ...`), **skill** (esta) y **MCP** (`@outbox/mcp`, 27 tools). Las
 tres usan la misma API key y el mismo backend.
 
 ## Contenido
