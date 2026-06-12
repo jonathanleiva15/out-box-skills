@@ -6,8 +6,9 @@ real (`out-box/worker/src/handlers` + `worker/src/lib`). Incluye Fase 3A (B1–B
 Fecha: 2026-05-30.
 
 - **Base API**: `https://api.out-box.dev`
-- **Auth**: `Authorization: Bearer outbox_xxxxx` (API key long-lived, en
-  `~/.outboxrc` o `OUTBOX_API_KEY`) en todo endpoint autenticado.
+- **Auth**: `Authorization: Bearer $OUTBOX_API_KEY` (API key long-lived del
+  usuario, leida de `~/.outboxrc` o de la env var `OUTBOX_API_KEY`; nunca se
+  hardcodea ni se loguea) en todo endpoint autenticado.
 - **HTML publico** se sirve desde la zona `https://out-box.dev/<user>/<slug>`
   (**SIN `/u/`** — el `/u/...` legacy 301-redirige al canonico).
 - No incluye endpoints solo-browser (OAuth, billing, admin invites/waitlist) ni
@@ -36,7 +37,7 @@ Fecha: 2026-05-30.
 | 400 | `invalid_visibility` | `visibility` presente pero invalida |
 | 400 | `invalid_ttl` | `ttl` con formato/rango invalido |
 | 400 | `invalid_scope_format` | scope con formato no `verb:user[:mod]` |
-| 413 | (size) | HTML > 5MB, data > 64KB, bloque > 50KB, upload > 10MB |
+| 413 | (size) | HTML sobre el limite por tier (free 10MB, pago hasta 25MB), data > 64KB, bloque > 50KB, upload > 10MB |
 | 429 | `rate_limited` | quota excedida; trae `retryAfter` |
 
 ---
@@ -61,12 +62,14 @@ quotaAtomicDO, `comments`).
 ## Contenido / publicacion
 
 ### POST /publish
-Publica una pagina HTML clasica. **Scope** `publish:u` + quota. HTML max **5MB**.
+Publica una pagina HTML clasica. **Scope** `publish:u` + quota. HTML max **por tier
+(free 10MB, pago hasta 25MB)**; limite vivo en `/api/capabilities.publishLimits` o
+`tierLimits.htmlMaxBytes` de `/api/me`.
 
 Body:
 ```jsonc
 {
-  "html": "<!doctype html>...",        // requerido, <=5MB
+  "html": "<!doctype html>...",        // requerido, <= limite por tier (free 10MB, pago hasta 25MB)
   "slug": "mi-slug",                   // opcional; default nanoid(8). [A-Za-z0-9_-], <=6 niveles, <=200 chars
   "title": "Titulo",                   // opcional
   "tags": ["a", "b"],                  // opcional
@@ -419,7 +422,7 @@ Limites por tier (fuente: `lib/tier-limits.ts`):
 
 | Tier | publish/hora | publish/dia | storageGB | agentKeysMax | dailyDocsMax |
 |---|---|---|---|---|---|
-| free | 5 | 10 | 0.1 | 1 | 0 |
+| free | 5 | 10 | 0.1 | 1 | 1 |
 | pro | 10 | 100 | 5 | ~unlimited (999) | 1 |
 | pro_plus | 30 | 500 | 25 | ~unlimited (999) | 5 |
 | team | 30 | 500 | 25 | ~unlimited (999) | 999 |

@@ -1,6 +1,6 @@
 ---
 name: outbox-publish
-version: 1.0.0
+version: 1.0.1
 description: >-
   Publica, lee, actualiza y gestiona paginas (HTMLs) en Outbox (out-box.dev) —
   la biblioteca privada en linea agents-first del usuario, via la API REST con
@@ -29,6 +29,23 @@ contexto/informacion, y la **re-publica** — Outbox versiona automaticamente en
 cada publish. Tambien hay daily documents (append de bloques fechados sin
 re-escribir todo el HTML).
 
+## Seguridad — keys acotadas (importante)
+
+Esta skill autentica con una API key del usuario. Para mantener el riesgo bajo:
+
+- **Pedi una key acotada, nunca la key admin.** Para un agente lo ideal es una
+  key **folder-scoped y con expiracion**:
+  `outbox keys gen-agent --folder <carpeta> --verbs publish --days 30`. Asi,
+  aunque la skill corra con los permisos del agente y aunque la key se filtre, el
+  blast radius es **una sola carpeta, por unos dias, solo los verbs dados** — no
+  tu cuenta entera.
+- **La key se usa SOLO para `Authorization: Bearer`** contra `api.out-box.dev`.
+  Nunca la imprimas, loguees ni la mandes a ningun otro destino.
+- **Del lado del back**: las keys se guardan **hasheadas** (SHA-256), son
+  **revocables al instante** y pueden **expirar solas**; el plaintext se muestra
+  una unica vez. Un `403 scope_escalation` impide que una key emita otra con mas
+  permisos.
+
 ## Las 3 vias de usar Outbox desde un agente
 
 Outbox se puede operar de tres formas equivalentes; **esta skill** es una de
@@ -38,8 +55,8 @@ ellas. Mencionalas si al usuario le conviene otra:
   `outbox export`, etc.). Lee la key de `~/.outboxrc`.
 - **Skill** `outbox-publish` (esta) — para agentes con skills: haces los requests
   HTTP que se describen aca.
-- **MCP** (`@outbox/mcp`, **27 tools**) — server MCP local (stdio) para clientes
-  MCP (Claude Desktop, Cursor). Se lanza con `npx -y @outbox/mcp` y autentica con
+- **MCP** (`@out-box/mcp`, **27 tools**) — server MCP local (stdio) para clientes
+  MCP (Claude Desktop, Cursor). Se lanza con `npx -y @out-box/mcp` y autentica con
   `OUTBOX_API_KEY` o `~/.outboxrc`. Tools tipo `outbox_publish`, `outbox_read`,
   `outbox_export`, `outbox_capabilities`, etc.
 
@@ -51,7 +68,7 @@ Las tres usan la **misma API key** y el **mismo backend**.
   de aca.
 - **Zona publica (lectura del HTML)**: `https://out-box.dev`. El HTML servido **no**
   se lee por la API; se lee desde la zona publica (ver "leer una pagina").
-- **Credencial = API key long-lived** (`Authorization: Bearer outbox_xxxxx`). La
+- **Credencial = API key long-lived** (`Authorization: Bearer $OUTBOX_API_KEY`). La
   key vive en `~/.outboxrc` (lo escribe el CLI con `outbox login`/`outbox setup`).
   En entornos cloud/headless tambien se pasa por `OUTBOX_API_KEY`. La key se
   hashea server-side y resuelve a un `Principal { user, scopes }`.
@@ -67,8 +84,10 @@ Las tres usan la **misma API key** y el **mismo backend**.
   - `401`: `missing_auth`, `invalid_key`, `key_revoked`, `key_expired`.
   - `403`: `forbidden` (+ `missingScope`/`missingAnyOf`), `scope_escalation`,
     `cross_user_*`.
-  - `413`: HTML > 5MB (`/publish`), data > 64KB (`publish-from-template`),
-    bloque > 50KB (daily), upload > 10MB.
+  - `413`: HTML sobre el limite por tier (free 10MB, pago hasta 25MB) en
+    `/publish`, data > 64KB (`publish-from-template`), bloque > 50KB (daily),
+    upload > 10MB. El limite vivo del tier esta en `/api/capabilities.publishLimits`
+    o `tierLimits.htmlMaxBytes` de `/api/me`.
   - `429`: `rate_limited` (+ `retryAfter`). Respeta y reintenta.
   - `400`: validacion (ej. `missing_model`, `invalid_visibility`, `invalid_ttl`).
 
@@ -126,11 +145,13 @@ no tiene ese verbo: avisale al usuario que necesitas una key con ese scope.
 
 ### 1. Publicar una pagina (HTML clasico)
 
-`POST /publish` — scope `publish:u` + quota. HTML max **5MB**.
+`POST /publish` — scope `publish:u` + quota. HTML max **por tier (free 10MB, pago
+hasta 25MB)**; consulta el limite vivo en `/api/capabilities.publishLimits` o
+`tierLimits.htmlMaxBytes` de `/api/me`.
 
 ```http
 POST /publish
-Authorization: Bearer outbox_xxxxx
+Authorization: Bearer $OUTBOX_API_KEY
 Content-Type: application/json
 
 {
@@ -202,7 +223,7 @@ Renderiza server-side un template del catalogo con tus datos (no mandas HTML).
 
 ```http
 POST /api/publish-from-template
-Authorization: Bearer outbox_xxxxx
+Authorization: Bearer $OUTBOX_API_KEY
 Content-Type: application/json
 
 {
@@ -223,13 +244,13 @@ kpis-snapshot | custom`. Catalogo vivo: `GET /api/templates/catalog` o
 
 Para "ir sumando durante el dia" sin re-escribir todo el HTML. Cada append agrega
 un bloque fechado (auto-rotacion por fecha UTC). Bloque max **50KB**. Sujeto al
-tier `dailyDocsMax` (free = 0).
+tier `dailyDocsMax` (free = 1).
 
 `POST /api/u/<user>/<slug>/append` — scope `publish:u` + quota.
 
 ```http
 POST /api/u/<user>/<slug>/append
-Authorization: Bearer outbox_xxxxx
+Authorization: Bearer $OUTBOX_API_KEY
 Content-Type: application/json
 
 {
@@ -453,8 +474,10 @@ Via MCP: `outbox_read_comments`, `outbox_create_suggestion`, `outbox_accept_sugg
    flow leer→sumar→re-publicar.
 7. **Respeta `429 rate_limited`**: lee `retryAfter` y reintenta. Limites por tier
    (free: 5/h, 10/dia; pro: 10/h, 100/dia; etc.).
-8. **Tamanos**: HTML ≤ 5MB (`/publish`); data ≤ 64KB (`publish-from-template`);
-   bloque ≤ 50KB (daily); upload ≤ 10MB (`/api/uploads`, SVG rechazado).
+8. **Tamanos**: HTML ≤ limite por tier (free 10MB, pago hasta 25MB) en `/publish`
+   (limite vivo en `/api/capabilities.publishLimits` o `tierLimits.htmlMaxBytes` de
+   `/api/me`); data ≤ 64KB (`publish-from-template`); bloque ≤ 50KB (daily);
+   upload ≤ 10MB (`/api/uploads`, SVG rechazado).
 9. **Folder-scoped keys** restringen TODOS los verbs al folder (blast radius
    acotado). Tus slugs deben colgar de ese prefijo.
 10. **`share` DELETE pide `admin:self`** (no `share:u`). **`rollback`** manda

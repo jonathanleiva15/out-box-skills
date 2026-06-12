@@ -28,7 +28,7 @@ pasa en el body).
 ## Las 3 vias de usar Outbox
 
 Esta skill es una de tres formas equivalentes de operar Outbox desde un agente:
-**CLI** (`outbox ...`), **skill** (esta) y **MCP** (`@outbox/mcp`, 27 tools). Las
+**CLI** (`outbox ...`), **skill** (esta) y **MCP** (`@out-box/mcp`, 27 tools). Las
 tres usan la misma API key y el mismo backend.
 
 ## Contenido
@@ -42,17 +42,21 @@ tres usan la misma API key y el mismo backend.
 
 ## Como instalar
 
-La skill vive en `out-box/skill/` (este directorio). Para usarla con Claude Code
-u otro agente compatible, copiala al directorio de skills del agente:
+El install canonico es via skills.sh:
 
 ```bash
-# Claude Code (skills de usuario)
-cp -r out-box/skill ~/.claude/skills/outbox-publish
+npx skills add jonathanleiva15/out-box-skills
 ```
 
-Reemplaza el destino por el directorio de skills de tu herramienta. La skill se
-activa por su `description` cuando el usuario pide publicar/leer/actualizar
-contenido en Outbox.
+O, si tenes el CLI `outbox`, el atajo equivalente:
+
+```bash
+outbox skill install
+```
+
+Cualquiera de los dos deja la skill en el directorio de skills de tu agente
+(`~/.claude/skills/outbox-publish` para Claude Code). La skill se activa por su
+`description` cuando el usuario pide publicar/leer/actualizar contenido en Outbox.
 
 ## Prerrequisito
 
