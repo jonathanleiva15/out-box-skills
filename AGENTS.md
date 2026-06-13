@@ -51,7 +51,7 @@ Esta skill es una de tres formas equivalentes (misma API key, mismo backend):
 
 - **CLI** (`outbox ...`)
 - **Skill** `outbox-publish` (este repo)
-- **MCP** (`@out-box/mcp`, 27 tools)
+- **MCP** (`@out-box/mcp`, 40 tools)
 
 ## Coherencia con el back
 

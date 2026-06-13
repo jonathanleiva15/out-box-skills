@@ -55,7 +55,7 @@ ellas. Mencionalas si al usuario le conviene otra:
   `outbox export`, etc.). Lee la key de `~/.outboxrc`.
 - **Skill** `outbox-publish` (esta) — para agentes con skills: haces los requests
   HTTP que se describen aca.
-- **MCP** (`@out-box/mcp`, **27 tools**) — server MCP local (stdio) para clientes
+- **MCP** (`@out-box/mcp`, **40 tools**) — server MCP local (stdio) para clientes
   MCP (Claude Desktop, Cursor). Se lanza con `npx -y @out-box/mcp` y autentica con
   `OUTBOX_API_KEY` o `~/.outboxrc`. Tools tipo `outbox_publish`, `outbox_read`,
   `outbox_export`, `outbox_capabilities`, etc.
