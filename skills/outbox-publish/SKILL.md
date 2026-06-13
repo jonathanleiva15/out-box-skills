@@ -237,8 +237,13 @@ Content-Type: application/json
 ```
 
 Templates del catalogo: `status-report | daily-briefing | repo-diff |
-kpis-snapshot | custom`. Catalogo vivo: `GET /api/templates/catalog` o
-`GET /api/templates` (ambos publicos).
+kpis-snapshot | custom`. Catalogo vivo de estos **content templates**: SOLO
+`GET /api/templates` (publico) — devuelve cada template con `id`, `description`,
+`requiredFields` y `optionalFields`.
+
+> No confundir con `GET /api/templates/catalog`: ese devuelve los **6 brand
+> presets visuales** (flujo 13), que son otra cosa. `publish-from-template` usa
+> SOLO `GET /api/templates`.
 
 ### 5. Daily documents — append de bloques fechados
 
@@ -259,10 +264,15 @@ Content-Type: application/json
   "ts": "2026-05-30T13:00:00Z",          // opcional, timestamp del bloque
   "visibility": "private",               // opcional (al crear el daily)
   "title": "Notas del dia",              // opcional
-  "model": "claude-opus-4-8",            // ContentMeta manifest-level (1er append)
+  "model": "claude-opus-4-8",            // OBLIGATORIO en el 1er append (crea el manifest)
   "summary": "..."
 }
 ```
+
+> **`model` es OBLIGATORIO en el PRIMER append** (el que crea el manifest del
+> daily): si falta → `400 missing_model`. `summary` tambien se exige en ese
+> primer append, pero con fallback no-IA derivado de `title`/`html`. En appends
+> POSTERIORES ambos son opcionales (la metadata del manifest es last-write-wins).
 
 Respuesta: `{ blockId, totalBlocks, version, url, date }` — `date` es la clave del
 dia UTC (`YYYY-MM-DD`) en que quedo el bloque (auto-rotacion por fecha UTC); usala
@@ -286,6 +296,10 @@ API). El `/u/<user>/<slug>` legacy **301-redirige** al canonico sin `/u/`.
   respeta sobre un slug son `?share=<token>` y `?date=YYYY-MM-DD` (este ultimo solo
   para dailies). **NO existe `?version=N`**: pasarlo se ignora silenciosamente y
   recibis la version actual.
+- **El HTML servido NO es byte-identico al persistido**: el back inyecta un
+  **widget overlay** self-contained en el `<body>` en serve-time (role-aware:
+  owner vs read-only). Para parsear el **HTML crudo** usa
+  `GET /api/u/<user>/<slug>/export?format=html` (flujo 7), no esta zona publica.
 - Para leer una version **anterior**: (a) `GET /api/u/<user>/<slug>/versions` te
   da el indice de versiones (autenticado), y (b) si la queres restaurar, hace
   rollback con `POST /api/u/<user>/<slug>/rollback` `{ "to": N }` — eso la vuelve la
@@ -298,7 +312,7 @@ Buscar por metadata (title/slug/tags, no fulltext): `GET /api/u/<user>/search?q=
 `GET /api/u/<user>/<slug>/export?format=json|html` — scope `publish:u`,
 cross-user 403. Mas comodo que parsear el HTML servido:
 - `format=json` (default): `{ model, summary, contenido, title, tags, visibility,
-  version, description, contentType, createdAt, updatedAt, slug, user }`.
+  version, description, contentType, meta, createdAt, updatedAt, slug, user }`.
 - `format=html`: el HTML crudo persistido.
 
 (El `tar.gz` esta diferido. Para content-templates devuelve el HTML renderizado,
@@ -363,8 +377,12 @@ Tres mecanismos distintos, con nombres propios:
    Outbox; solo el lo ve, autenticado. `POST /api/grants` (scope `template:u`):
    ```json
    { "recipientUser": "<username>", "resource": "<slug-o-prefijo>",
-     "resourceType": "post", "permissions": ["view"], "expiresInDays": 30 }
+     "resourceType": "post", "permissions": ["comment"], "expiresInDays": 30 }
    ```
+   `permissions` acepta `"view"` | `"comment"` (otro valor → `400
+   invalid_permissions`). **`"comment"` implica `"view"`** (el back agrega `view`
+   automaticamente). Para que el tercero solo LEA, usa `["view"]`; para que ademas
+   pueda **comentar un private** (flujo 16), el grant DEBE incluir `"comment"`.
    Listar: `GET /api/grants` (dados) o `?incoming=1` (recibidos). Revocar (solo
    owner): `DELETE /api/grants/<id>`.
 
@@ -375,11 +393,19 @@ borrar (no es recuperable via API).
 
 ### 13. Template per-user y brand preset
 
-Outbox tiene **6 brand presets**: `paper | minimal | corporate | dark | brutalist
-| editorial`.
+Outbox tiene **6 brand presets** visuales: `paper | minimal | corporate | dark |
+brutalist | editorial`. El catalogo vivo de estos presets es
+`GET /api/templates/catalog` (publico) — **distinto** de `GET /api/templates`
+(los 5 content templates de `publish-from-template`, flujo 4): son dos cosas
+separadas.
 - Cambiar el preset preferido (`stylePreference`): `PUT /api/me/style` con
   `{ "stylePreference": "dark" }` — scope `template:u`. No re-aplica el HTML, solo
   cambia la preferencia. `400 invalid_stylePreference` fuera de los 6.
+  - El mismo `PUT /api/me/style` acepta tambien (solos o combinados con
+    `stylePreference`) los overrides del widget: `widgetColor` (`"auto"` o
+    `#rrggbb`) y `widgetTheme` (`"auto" | "light" | "dark"`). Errores:
+    `400 invalid_widgetColor` / `400 invalid_widgetTheme`. La respuesta refleja
+    solo los campos enviados.
 - Instalar un template del catalogo como wrapper visual:
   `POST /api/template/from-catalog` con `{ "templateId": "..." }` — scope `template:u`.
 - Wrapper HTML propio para publishes con `branding:"full"`:
@@ -396,13 +422,16 @@ Si el usuario quiere emitir una key para que OTRO agente publique en su nombre:
 - Listar: `GET /api/keys` (requireAuth).
 - Crear con scopes explicitos: `POST /api/keys` — scope `genkey:u`. Valida subset
   (no escalation → `403 scope_escalation`); formato malo → `400 invalid_scope_format`.
-- **Atajo agent key folder-scoped** (delegacion / blast radius acotado):
+- **Atajo agent key** (delegacion):
   `POST /api/keys/agent` — scope `genkey:u`:
   ```json
   { "label": "agente-briefing", "folder": "briefings", "days": 30,
     "verbs": ["publish", "list"] }
   ```
-  `folder` → la key queda restringida a ese folder. `days: 0` = nunca expira
+  `folder` es **OPCIONAL**: con `folder` la key queda **restringida** a ese folder
+  (blast radius acotado, recomendado); **sin `folder` la key sale BROAD** — los
+  verbs cubren todo el namespace (scopes sin prefijo `f/`, ej `publish:user`),
+  equivalente al default de `POST /api/keys` type=agent. `days: 0` = nunca expira
   (devuelve `warning_no_expiry`). `verbs` por default `["publish"]` (subset de
   `publish,list,delete,folder,share,template,upload`).
 - Rotar: `POST /api/keys/rotate` — scope `genkey:u` (atomico: genera nueva, revoca

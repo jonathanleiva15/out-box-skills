@@ -36,9 +36,11 @@ Fecha: 2026-05-30.
 | 400 | `missing_model` | falta `model` en publish/publish-from-template |
 | 400 | `invalid_visibility` | `visibility` presente pero invalida |
 | 400 | `invalid_ttl` | `ttl` con formato/rango invalido |
-| 400 | `invalid_scope_format` | scope con formato no `verb:user[:mod]` |
-| 413 | (size) | HTML sobre el limite por tier (free 10MB, pago hasta 25MB), data > 64KB, bloque > 50KB, upload > 10MB |
-| 429 | `rate_limited` | quota excedida; trae `retryAfter` |
+| 400 | `invalid_scope_format` | scope con formato no `verb:user[:mod\|f/folder]` (incluye folder invalido tras `f/`: vacio, `..`, `//`) |
+| 403 | `unknown_user` | el owner de la key no resuelve a un `UserRecord` (flujo de quota en publish/append) |
+| 413 | `html_too_large` | HTML sobre el limite por tier (free 10MB, pago hasta 25MB) en `/publish` |
+| 413 | `data_too_large` · `block_too_large` · `upload_too_large` | data > 64KB (publish-from-template), bloque > 50KB (daily append), upload > 10MB |
+| 429 | `rate_limited` | quota excedida; body `{ error, scope, retryAfter, used, limits }` + header HTTP `retry-after` |
 
 ---
 
@@ -70,7 +72,7 @@ Body:
 ```jsonc
 {
   "html": "<!doctype html>...",        // requerido, <= limite por tier (free 10MB, pago hasta 25MB)
-  "slug": "mi-slug",                   // opcional; default nanoid(8). [A-Za-z0-9_-], <=6 niveles, <=200 chars
+  "slug": "mi-slug",                   // opcional; default nanoid(8). [A-Za-z0-9_-]{1,64} por segmento, <=6 niveles, <=200 chars totales
   "title": "Titulo",                   // opcional
   "tags": ["a", "b"],                  // opcional
   "visibility": "private",             // opcional: private(DEFAULT) | unlisted | public
@@ -105,6 +107,36 @@ Notas:
   solo aplica con `inheritFolderVisibility: true` (recorre el ancestro mas cercano).
 - `model` faltante → `400 missing_model`. `user`/`owner` en body se ignoran.
 
+Errores de `/publish`:
+
+| Status | `error` | Cuando |
+|---|---|---|
+| 400 | `invalid_json` | el body no es JSON valido |
+| 400 | `missing_html` | falta `html` o es string vacio |
+| 400 | `invalid_slug` | slug fuera de `[A-Za-z0-9_-]{1,64}` por segmento / >6 niveles / >200 chars |
+| 400 | `missing_model` | falta `model` |
+| 413 | `html_too_large` | HTML sobre el limite por tier |
+| 403 | `unknown_user` | el owner de la key no resuelve a un usuario |
+| 429 | `rate_limited` | quota excedida |
+
+**Errores de ContentMeta** (aplican a `/publish`, `/api/publish-from-template` y al 1er append de un daily; todos `400`):
+
+| `error` | Cuando |
+|---|---|
+| `missing_model` | falta `model` |
+| `model_too_long` | `model` > 64 chars |
+| `invalid_model` | `model` no matchea `[a-z0-9_-./:]` (case-insensitive) |
+| `summary_too_long` | `summary` > 280 chars |
+| `description_too_long` | `description` > 2000 chars |
+| `contentType_too_long` | `contentType` > 40 chars |
+| `invalid_contentType` | `contentType` no matchea `[a-z0-9_-]` |
+| `invalid_type` | un campo de ContentMeta tiene tipo errado |
+| `meta_too_many_keys` | `meta` con > 10 keys |
+| `meta_invalid_key` | key no empieza con letra o > 40 chars (identifier-style) |
+| `meta_value_too_long` | un valor string de `meta` > 500 chars |
+| `meta_invalid_value` | valor de `meta` no es string/number/boolean |
+| `content_meta_too_large` | ContentMeta serializada > 4KB |
+
 ### POST /api/publish-from-template
 Renderiza un template del catalogo server-side. **Scope** `publish:u` + quota.
 Data max **64KB**. Mismas reglas de ContentMeta que `/publish` (`model` obligatorio).
@@ -122,7 +154,17 @@ Body:
   "summary": "...", "contentType": "..."
 }
 ```
-Respuesta: igual a `/publish`.
+`slug` opcional: mismo patron que `/publish` (`[A-Za-z0-9_-]{1,64}` por segmento, <=6 niveles, <=200 chars). `inheritFolderVisibility` y `ttl` tambien aplican (igual que `/publish`).
+
+Respuesta: igual a `/publish`. Errores:
+
+| Status | `error` | Cuando |
+|---|---|---|
+| 413 | `data_too_large` | `data` serializada > 64KB |
+| 400 | `invalid_template` | `template` no es uno de los 5 content-templates |
+| 400 | `missing_field` / `invalid_field` | campo requerido del template ausente / invalido (trae `field`) |
+| 400 | `invalid_slug` | slug fuera del patron |
+| 400 | `missing_model` | falta `model` (+ resto de errores de ContentMeta) |
 
 ### GET https://out-box.dev/&lt;user&gt;/&lt;slug&gt;
 Lee el HTML servido (zona publica, **SIN `/u/`**; el `/u/...` 301-redirige). Visibility:
@@ -134,6 +176,10 @@ Lee el HTML servido (zona publica, **SIN `/u/`**; el `/u/...` 301-redirige). Vis
   (indice) + `POST .../rollback` `{ "to": N }` (restaurar) — ver seccion Versiones.
 - `?date=YYYY-MM-DD` en un slug daily: sirve los bloques de ese dia.
 - `?share=<token>`: acceso a una pagina private via share token.
+
+El HTML servido por la zona publica lleva inyectado un **widget overlay** self-contained
+(rol-aware owner vs read-only) al final del `<body>`: **no es byte-identico al persistido**.
+Para el HTML crudo usar `GET /api/u/<user>/<slug>/export?format=html`.
 
 ### GET /api/u/&lt;user&gt;/&lt;slug&gt;/export?format=json|html
 **B9** — export machine-readable. **Scope** `publish:u` (folder-aware), cross-user → `403`.
@@ -161,6 +207,8 @@ Lee el HTML servido (zona publica, **SIN `/u/`**; el `/u/...` 301-redirige). Vis
     "path": "/api/u/<user>/_uploads/<hash>.png" }
   ```
 - `413 upload_too_large` · `415 unsupported_media_type`.
+- `400 empty_upload` (body de 0 bytes) · `400 missing_file_field` (multipart sin campo `file`) · `400 invalid_multipart` (multipart malformado).
+- **Scope** `upload:u` es folder-aware: una key folder-scoped `upload:u:f/<folder>` tambien pasa el check del verb (igual que publish/delete/list).
 
 ### GET /api/u/&lt;user&gt;/_uploads/&lt;hash&gt;.&lt;ext&gt;
 Sirve el binario. **Publico** (sin auth; el hash es capability token). Inmutable
@@ -171,13 +219,24 @@ Sirve el binario. **Publico** (sin auth; el hash es capability token). Inmutable
 ## Versiones
 
 ### GET /api/u/&lt;user&gt;/&lt;slug&gt;/versions
-Lista versiones. **requireAuth**. Cross-user → `403`.
+Lista versiones. **requireAuth**. Cross-user → `403`. Sin indice → `404 no_versions`.
+
+### GET /api/u/&lt;user&gt;/&lt;slug&gt;/diff?from=N&to=M
+Diff entre dos versiones. **requireAuth**. Cross-user → `403`. `from`/`to` deben ser
+safe-int `>= 1`, sino `400 invalid_versions` (plural). Version inexistente →
+`404 version_not_found`. Respuesta: `{ slug, from, to, added, removed, preview }`.
 
 ### POST /api/u/&lt;user&gt;/&lt;slug&gt;/rollback
-Vuelve a una version. **Scope** `publish:u`. Parametro en **body** (no query):
+Vuelve a una version. **Scope** `publish:u` (**folder-aware**: una key folder-scoped
+solo puede hacer rollback de slugs bajo su folder, sino `403 slug_not_under_allowed_folder`
+con `allowedFolders`). Parametro en **body** (no query):
 ```json
 { "to": 2 }
 ```
+Errores: `400 invalid_version` (singular; `to` ausente/no-int/<1), `400 invalid_json`
+(body no parsea), `400 invalid_slug`, `404 version_not_found`, `403 cross_user_forbidden`.
+Exito: `{ ok: true, current }`. (Nota: `diff` usa `invalid_versions` plural, rollback
+`invalid_version` singular.)
 
 ---
 
@@ -223,16 +282,45 @@ Agrega un bloque fechado a un daily. **Scope** `publish:u` + quota + tier
 ```
 Respuesta: `{ blockId (blk_*), totalBlocks, version, url, date }` — `date` es la
 clave del dia UTC (`YYYY-MM-DD`) en que cayo el bloque (la rotacion es por fecha UTC).
-Error `409 conflict_with_static_post` si el slug ya es un HTML estatico.
+El `url` es la forma canonica `https://out-box.dev/<user>/<slug>` (**SIN `/u/`**, a
+diferencia del `url` de `/publish` que viene con `/u/`).
+
+**ContentMeta en el primer append**: `model` es OBLIGATORIO en el PRIMER append (crea
+el manifest) → `400 missing_model`; `summary` requerido pero con fallback no-IA derivado
+de `title`/`html`. En appends posteriores ambos son opcionales (last-write-wins, no se
+borran si faltan).
+
+Errores:
+
+| Status | `error` | Cuando |
+|---|---|---|
+| 409 | `conflict_with_static_post` | el slug ya es un HTML estatico |
+| 403 | `daily_docs_limit` | slug nuevo para el dia y se supera `dailyDocsMax` (o tier con limit 0); trae `{ message, limit, tier, active[] }` |
+| 400 | `invalid_body` | body no parsea |
+| 400 | `invalid_html` | `html` no-string o vacio |
+| 413 | `block_too_large` | bloque > 50KB (trae `maxBytes`) |
+| 400 | `invalid_ts` / `invalid_label` (label >64) / `invalid_visibility` / `invalid_title` (title >200) | campo invalido |
+| 400 | `missing_model` | falta `model` en el 1er append (+ resto de errores de ContentMeta) |
 
 ### GET /api/u/&lt;user&gt;/&lt;slug&gt;/blocks?date=YYYY-MM-DD
-Lista los bloques de un dia. **Scope** `list:u`. `date` opcional (default hoy UTC).
+Devuelve el **manifest completo** del daily (NO un array crudo de blocks). **Scope**
+`list:u`. `date` opcional (default hoy UTC). Respuesta (`DailyManifest`):
+```jsonc
+{ "user", "slug", "date", "blocks": [...], "createdAt", "updatedAt", "version",
+  "visibility", "title?", "model?", "summary?", "description?", "contentType?",
+  "meta?", "publishedByLabel?", "publishedByKind?" }
+```
+No existe → `404 daily_not_found` (con `{ user, slug, date }`); `?date` invalido → `400 invalid_date`.
 
 ### GET /api/u/&lt;user&gt;/&lt;slug&gt;/dailies?days=N
-Historial de dias del daily. **Scope** `list:u`. Solo existe la forma **con slug**.
+Historial de dias del daily (liviano, sin blocks). **Scope** `list:u`. Solo existe la
+forma **con slug**. `days` default 7, se clampa a max 90; `days < 1` → `400 invalid_days`.
+Respuesta: `{ user, slug, dailies: [{ date, blockCount, updatedAt, version }] }`.
 
 ### DELETE /api/u/&lt;user&gt;/&lt;slug&gt;/blocks/&lt;blockId&gt;
-Borra un bloque (`blockId` con prefijo `blk_`). **Scope** `delete:u`.
+Borra un bloque (`blockId` con prefijo `blk_`). **Scope** `delete:u`. Respuesta:
+`{ remainingBlocks, version }`. Errores: `404 daily_not_found`, `404 block_not_found`,
+`400 invalid_date`, `400 invalid_path`.
 
 ---
 
@@ -250,6 +338,10 @@ Respuesta (depth=1): `{ user, count, truncated, cursor, posts }`. **`cursor`** e
 cursor de la proxima pagina o `null` si no hay mas; `truncated = (cursor !== null)`.
 Para traer todo, repetir con `?cursor=<cursor>` hasta `cursor: null`.
 
+La paginacion por `cursor` aplica **solo al listado propio**. En `?shared=1` la
+respuesta es `{ user, shared:true, count, truncated, posts }` (**sin `cursor`**;
+`truncated` siempre `false` en v1).
+
 Cada item de `posts[]` incluye (ademas de `slug`, `url`, `title`, `tags`, etc.):
 - `publishedByLabel` (string, opcional): label del key que publico la ultima version. Ausente en posts pre-2026-05-27.
 - `publishedByKind` (`"agent"` | `"human"`, opcional): tipo del principal que publico. Para posts legacy se deriva de `publishedByLabel` (`"browser-session"` ⇒ human, otro label ⇒ agent, sin label ⇒ ausente).
@@ -257,16 +349,41 @@ Cada item de `posts[]` incluye (ademas de `slug`, `url`, `title`, `tags`, etc.):
 
 ### GET /api/u/&lt;user&gt;/search?q=&lt;query&gt;
 Busca por metadata (title/slug/tags, no fulltext). Publico (el owner ve sus
-private si va autenticado). `?limit` opcional.
+private si va autenticado). Devuelve hasta **50 resultados** (tope fijo, no
+configurable), ordenados por score descendente. El unico query param leido es `q`.
+- `q` > 200 chars → `400 query_too_long`.
+- `q` vacio → `{ user, query: "", count: 0, results: [] }` (`200`, no error).
+
+### GET /api/u/&lt;user&gt;/manifest
+Lista completa de paginas del namespace (publico, owner-aware), complemento de
+search/recent. Respuesta: `{ user, scope, count, lastUpdated, posts[] }` donde cada
+post incluye `contentSize`.
 
 ### GET /api/folders y /api/folders/&lt;prefix&gt;
 Lista folders. **Scope** `list:u` (GET raiz) / `requireAuth` (GET por prefix).
-`?depth` opt-in para arbol.
+`?depth` opt-in para arbol (rango `[1,3]`, fuera → `400 invalid_depth`).
+- GET raiz → `{ folders: [{ slug, count, visibility|null, declaredByKey? }] }` (con
+  `?depth>=2` agrega `{ depth, tree }`).
+- GET por prefix → la `FolderMetadata` directa, o `404 not_found`. Prefix con formato
+  invalido → `400 invalid_prefix`.
 
 ### PUT /api/folders/&lt;prefix&gt;
 Setea metadata/visibility de un folder. **Scope** `folder:u` o `template:u`
 (folder-aware). Emite `PUT` (aunque algun cliente lo llame "patch"). No es
 retroactivo: solo afecta publishes nuevos que opten por heredar.
+```jsonc
+{
+  "visibility": "public",   // REQUERIDO: private|unlisted|public. Ausente/invalida → 400 invalid_visibility
+  "title": "...",           // opcional (tipo invalido → 400 invalid_title)
+  "description": "..."      // opcional (tipo invalido → 400 invalid_description)
+}
+```
+Respuesta: `{ ok: true, meta: { prefix, owner, title?, description?, visibility, createdAt, updatedAt } }`.
+
+### DELETE /api/folders/&lt;prefix&gt;
+Borra solo la **metadata** del folder (el `_folder.json`); los posts hijos permanecen.
+**Scope** `folder:u` o `template:u` (folder-aware, mismo check que PUT). Respuesta:
+`{ ok: true, deleted: "<prefix>" }`.
 
 ---
 
@@ -276,12 +393,18 @@ Los **6 brand presets**: `paper | minimal | corporate | dark | brutalist | edito
 
 ### PUT /api/me/style
 **B3** — cambia el brand preset preferido (`stylePreference`) SIN re-aplicar el HTML.
-**Scope** `template:u`.
-```json
-{ "stylePreference": "dark" }
+**Scope** `template:u`. Acepta TRES campos combinables (solos o juntos):
+```jsonc
+{
+  "stylePreference": "dark",   // uno de los 6 IDs → 400 invalid_stylePreference
+  "widgetColor": "#1a73e8",    // 'auto' | #rrggbb → 400 invalid_widgetColor
+  "widgetTheme": "dark"        // 'auto' | 'light' | 'dark' → 400 invalid_widgetTheme
+}
 ```
-Uno de los 6 IDs. Fuera de eso → `400 invalid_stylePreference`. Respuesta:
-`{ ok, stylePreference }`. El valor se expone siempre en `GET /api/me`.
+Si no vino NINGUN campo valido → `400 invalid_stylePreference`. Si el user no existe →
+`404 user_not_found`. La respuesta **refleja solo los campos enviados**:
+`{ ok, stylePreference?, widgetColor?, widgetTheme? }`. `stylePreference` se expone
+siempre en `GET /api/me`.
 
 ### GET /api/template
 Devuelve el template HTML del owner. **Scope** `template:u`.
@@ -294,13 +417,23 @@ Debe contener `{{content}}` (soporta `{{title}}`, `{{date}}`, `{{author}}`). Max
 Borra el template. **Scope** `template:u`.
 
 ### POST /api/template/from-catalog
-Instala un template del catalogo. **Scope** `template:u`.
+Instala un brand preset del catalogo. **Scope** `template:u`.
 ```json
 { "templateId": "dark" }
 ```
+`templateId` debe ser uno de los **6 brand presets** (no un content-template) →
+`400 invalid_templateId`. Si el preset no existe en R2 → `404 template_not_found`;
+body no parsea → `400 invalid_json`. Respuesta: `{ ok: true, templateId }`. Ademas
+actualiza `stylePreference` (equivale a aplicar el preset + persistir la preferencia).
 
 ### GET /api/templates/catalog  ·  GET /api/templates
-Catalogo de templates disponibles. **Publico** (sin auth).
+**DOS catalogos DISTINTOS**, ambos **publicos** (sin auth):
+- **GET /api/templates/catalog** → los **6 brand presets** visuales
+  (`paper | minimal | corporate | dark | brutalist | editorial`).
+- **GET /api/templates** → los **5 content templates** de `publish-from-template`
+  (`status-report | daily-briefing | repo-diff | kpis-snapshot | custom`), cada uno con
+  `id`, `description`, `requiredFields`, `optionalFields`. `publish-from-template` consume
+  SOLO este catalogo (los content-templates NO viven en `/api/templates/catalog`).
 
 ---
 
@@ -342,17 +475,39 @@ Comparte con un user que tiene cuenta (solo el ve, autenticado). **Scope**
   "recipientUser": "<username>",
   "resource": "<slug-o-prefijo>",
   "resourceType": "post",              // "post" | "folder"
-  "permissions": ["view"],             // v1: solo "view"
+  "permissions": ["view"],             // "view" | "comment". "comment" implica "view"
   "expiresInDays": 30,                 // opcional (default 30; null = permanente)
   "message": "..."                     // opcional (<=500 chars)
 }
 ```
+`permissions` acepta `"view"` **o** `"comment"`: `comment` implica `view` (el back
+agrega `view` automaticamente al set). Cualquier otro valor (ej. `edit`) →
+`400 invalid_permissions`. **Load-bearing**: para que un tercero pueda **comentar** un
+post `private` compartido (ver Comentarios), el grant DEBE incluir `["comment"]`, no `["view"]`.
 
 #### GET /api/grants  ·  GET /api/grants?incoming=1
 Lista grants emitidos (owner) o recibidos (`?incoming=1`). **requireAuth**.
 
 #### DELETE /api/grants/&lt;id&gt;
 Revoca un grant (solo owner). **requireAuth**. `id` = 16 hex.
+
+### Auditar el acceso a una pagina
+
+#### GET /api/u/&lt;user&gt;/&lt;slug&gt;/access
+Vista inversa del **blast radius**: que/quien tiene acceso a una pagina. **Owner-only**
+(cross-user → `403` "access view is owner-only"). Devuelve las keys cuyo scope cubre el
+slug, los grants y los share tokens activos (filtra revocados/expirados), cada uno con su
+endpoint de `revoke`:
+```jsonc
+{
+  "user", "slug",
+  "owner": { "user", "access": "full" },
+  "keys": [ { ..., "revoke": { "method", "path" } } ],
+  "grants": [ { ..., "revoke": { "method", "path" } } ],
+  "shares": [ { ..., "revoke": { "method", "path" } } ],
+  "counts": { "keys", "grants", "shares" }
+}
+```
 
 ---
 
@@ -372,16 +527,23 @@ acotado). **Scope** `genkey:u`.
 ```jsonc
 {
   "label": "agente-x",                 // requerido, 1-60 chars
-  "folder": "briefings",               // opcional → key folder-scoped (todos los verbs al folder)
+  "folder": "briefings",               // OPCIONAL. con folder → key folder-scoped; sin folder → key BROAD (todo el namespace para los verbs dados)
   "days": 30,                          // 0 = nunca expira (warning_no_expiry); max 365; default 30
   "verbs": ["publish", "list"]         // subset de publish,list,delete,folder,share,template,upload; default ["publish"]
 }
 ```
-Respuesta incluye `expiresAt`, `folder`, `days`, y `warning_no_expiry` si `days:0`.
+`folder` es opcional: sin `folder` la agent key sale **BROAD** (scopes sin prefijo `f/`,
+ej. `publish:user`), equivalente al default de `POST /api/keys` type=agent; solo con
+`folder` queda restringida. Respuesta completa:
+`{ plaintext, keyId, label, type, scopes, rateLimits, expiresAt, folder, days, warning, warning_no_expiry? }`
+(`days` es `null` cuando nunca expira).
 
 ### POST /api/keys/rotate
 Rotacion atomica (genera nueva, revoca vieja). **Scope** `genkey:u`. Con auth de
-sesion requiere `keyId` en el body.
+sesion requiere `keyId` en el body. Errores: `400 keyId_required_for_session_auth`,
+`400 invalid_label`, `404 key_not_found`, `409 key_already_revoked`. Si el revoke de la
+key vieja falla DESPUES del gen, devuelve `200` con la nueva key + `warning` y
+`oldRevokedAt: null` (quedan 2 keys activas temporalmente).
 
 ### POST /admin/revoke
 Revoca una key. **Scope** `admin:self`. **Path sin prefijo `/api`** (intencional).
@@ -410,27 +572,51 @@ expirado/no-pending · `429`.
 ## Cuenta, uso, auditoria
 
 ### GET /api/me
-Identidad del principal. **requireAuth**. Devuelve `user`, `keyId`, `type`
-(`human`/`agent`), `scopes[]`, `rateLimits`, `tier`, `tierLimits`, y
-`stylePreference` (uno de los 6 IDs, null si nunca eligio).
+Identidad del principal. **requireAuth**. Devuelve siempre: `user`, `keyId`, `type`
+(`human`/`agent`), `scopes[]`, `rateLimits`, `tier`, `tierLimits`, `stylePreference`
+(uno de los 6 IDs, null si nunca eligio), `slugWhitelist`, `authSource`,
+`subscriptionStatus`, `currentPeriodEnd`, `billingCycle` (estos 3 ultimos `null` hasta
+billing). Con auth de sesion agrega ademas `email`/`name`/`avatarUrl`.
 
 ### GET /api/me/usage
 Consumo vs limites del tier. **requireAuth**. `?refresh=true` fuerza recalculo
-(cache 300s). `tier` ∈ `free | pro | pro_plus | team`.
+(cache 300s). `tier` ∈ `free | pro | pro_plus | team`. Respuesta (`UsageResponse`):
+```jsonc
+{
+  "user", "tier",
+  "limits": { "publishPerHour", "publishPerDay", "storageGB", "agentKeysMax", "dailyDocsMax" },
+  "usage": {
+    "publishes": { "hour", "day" },
+    "storage": { "usedBytes", "usedMB", "limitMB", "pct", "truncated" },
+    "posts": { "total", "byVisibility" },
+    "keys": { "active", "max" },
+    "dailies": { "active", "max" }
+  },
+  "billing": { /* ... */ },
+  "computedAt",
+  "cached": false    // true cuando viene de cache (TTL 300s)
+}
+```
 
 Limites por tier (fuente: `lib/tier-limits.ts`):
 
 | Tier | publish/hora | publish/dia | storageGB | agentKeysMax | dailyDocsMax |
 |---|---|---|---|---|---|
 | free | 5 | 10 | 0.1 | 1 | 1 |
-| pro | 10 | 100 | 5 | ~unlimited (999) | 1 |
-| pro_plus | 30 | 500 | 25 | ~unlimited (999) | 5 |
+| pro | 10 | 100 | 5 | ~unlimited (999) | 3 |
+| pro_plus | 30 | 500 | 25 | ~unlimited (999) | 10 |
 | team | 30 | 500 | 25 | ~unlimited (999) | 999 |
 
 ### GET /api/audit
-Eventos de auditoria del owner. **Scope** `audit:self`. Ventana 7 dias, cursor
-`before` + `limit`. El campo de accion se expone como `kind` (alias externo de
-`action`); filtrable con `?kind=publish,delete`.
+Eventos de auditoria del owner. **Scope** `audit:self`. Ventana 7 dias. El campo de
+accion se expone como `kind` (alias externo de `action`). Respuesta:
+`{ user, count, hasMore, nextCursor, events[], windowScannedDays }`. Paginacion real
+con `?before=<nextCursor>` (+ `?limit`, default 50 / max 200).
+
+Filtros: `?kind=publish,delete` (CSV; kind invalido → `400 unknown_kind` con campo
+`got`), `?since=<ISO>`, `?keyId=<8 hex>`, `?prefix=<folder>`, `?slug=<slug>`. Errores:
+`400 invalid_limit` / `invalid_before` / `invalid_since` / `invalid_keyId` /
+`invalid_prefix` / `invalid_slug`.
 
 ---
 
@@ -447,7 +633,7 @@ Lista los comentarios y sugerencias de una pagina. **Permisos de lectura**: owne
 siempre; un tercero con grant `comment` (o `?share`) en privados; cualquier user autenticado en
 `unlisted`/`public`; anonimo con `?share=<token>`.
 
-Respuesta: `{ postOwner, slug, count, openCount, comments }`. Cada item de `comments[]`:
+Respuesta: `{ postOwner, slug, visibility, count, openCount, comments }`. Cada item de `comments[]`:
 ```jsonc
 {
   "id": "<hex>",
@@ -471,7 +657,7 @@ necesita grant `comment` (o `?share`).
 ```jsonc
 {
   "kind": "suggestion",                 // "comment" | "suggestion"
-  "body": "<por que proponés el cambio>",   // opcional
+  "body": "<por que proponés el cambio>",   // OPCIONAL en suggestion (si hay replacement); OBLIGATORIO en comment (vacio → 400 missing_body)
   "anchor": {
     "exact": "<texto VISIBLE a reemplazar>",  // requerido en suggestion
     "prefix": "...", "suffix": "..."          // opcional, desambigua si se repite
@@ -484,6 +670,10 @@ necesita grant `comment` (o `?share`).
   localiza contra el HTML aunque haya tags/entidades en el medio. No reproduzcas el markup.
 - Suggestion sin ancla/replacement → `400 suggestion_requires_anchor` /
   `400 suggestion_requires_replacement`.
+- **Limites del POST**: `429 rate_limited` (30 comentarios/min por identidad; trae
+  `retryIn` + header `Retry-After`) · `429 too_many_comments` (tope 500 por post,
+  incluye respuestas). Tamanos: `body` ≤4000 (`413 body_too_large`), `anchor.exact`
+  ≤2000 (`413 anchor_too_large`), `replacement` ≤8000 (`413 replacement_too_large`).
 
 ### POST /api/u/&lt;user&gt;/&lt;slug&gt;/comments/&lt;id&gt;/accept
 Acepta una **suggestion**: aplica el `replacement` (HTML-escapado) sobre el texto anclado.
@@ -497,11 +687,14 @@ Respuesta: `{ ok, comment, version, noChange }`.
   marca la suggestion como `accepted` y **NO crea version nueva**.
 - `409 anchor_not_found`: el texto ancla ya no esta / cambio (descarta la suggestion con `discard`).
 - `409 comment_not_open`: la suggestion ya esta `accepted`/`discarded`/`resolved`.
+- `404 post_html_not_found`: falta el `.html` del post.
+- `400 not_top_level`: se intenta aceptar una **respuesta** (parentId) en vez de un comentario top-level.
 
 ### POST /api/u/&lt;user&gt;/&lt;slug&gt;/comments/&lt;id&gt;/discard  ·  /resolve
 Modera un comentario o suggestion. **Owner-only** (`403` si no). `discard` lo marca `discarded`;
 `resolve` lo marca `resolved`. Ninguno toca el HTML. Util para limpiar sugerencias obsoletas (ej.
-tras un `409 anchor_not_found`).
+tras un `409 anchor_not_found`). Errores: `409 comment_not_open` (ya cerrado),
+`400 not_top_level` (es una respuesta), `404 comment_not_found`.
 
 ---
 
