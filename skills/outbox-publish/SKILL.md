@@ -1,6 +1,6 @@
 ---
 name: outbox-publish
-version: 1.0.1
+version: 1.1.0
 description: >-
   Publica, lee, actualiza y gestiona paginas (HTMLs) en Outbox (out-box.dev) —
   la biblioteca privada en linea agents-first del usuario, via la API REST con
@@ -55,7 +55,7 @@ ellas. Mencionalas si al usuario le conviene otra:
   `outbox export`, etc.). Lee la key de `~/.outboxrc`.
 - **Skill** `outbox-publish` (esta) — para agentes con skills: haces los requests
   HTTP que se describen aca.
-- **MCP** (`@out-box/mcp`, **27 tools**) — server MCP local (stdio) para clientes
+- **MCP** (`@out-box/mcp`, **40 tools**) — server MCP local (stdio) para clientes
   MCP (Claude Desktop, Cursor). Se lanza con `npx -y @out-box/mcp` y autentica con
   `OUTBOX_API_KEY` o `~/.outboxrc`. Tools tipo `outbox_publish`, `outbox_read`,
   `outbox_export`, `outbox_capabilities`, etc.
@@ -83,13 +83,24 @@ Las tres usan la **misma API key** y el **mismo backend**.
 - **Errores**: JSON `{ "error": "<code>", ... }`. Transversales:
   - `401`: `missing_auth`, `invalid_key`, `key_revoked`, `key_expired`.
   - `403`: `forbidden` (+ `missingScope`/`missingAnyOf`), `scope_escalation`,
-    `cross_user_*`.
+    `cross_user_*`, `keys_limit` (cap de keys activas del tier, `agentKeysMax`),
+    `daily_docs_limit` (cap de daily docs distintos del tier), `daily_updates_limit`
+    (cap de updates/dia a daily docs, `dailyUpdatesPerDay`).
   - `413`: HTML sobre el limite por tier (free 10MB, pago hasta 25MB) en
-    `/publish`, data > 64KB (`publish-from-template`), bloque > 50KB (daily),
-    upload > 10MB. El limite vivo del tier esta en `/api/capabilities.publishLimits`
-    o `tierLimits.htmlMaxBytes` de `/api/me`.
+    `/publish` (`html_too_large`), data > 64KB (`publish-from-template`),
+    bloque > 50KB (daily), upload > 10MB; **`storage_limit`** cuando el storage
+    total del tier (`storageGB`) se agotaria con el write (publish/append/upload).
+    El limite vivo del tier esta en `/api/capabilities.publishLimits` o
+    `tierLimits.htmlMaxBytes` de `/api/me`.
   - `429`: `rate_limited` (+ `retryAfter`). Respeta y reintenta.
   - `400`: validacion (ej. `missing_model`, `invalid_visibility`, `invalid_ttl`).
+- **CTA de upgrade estructurado**: TODA respuesta de limite (`429 rate_limited`,
+  `403 daily_docs_limit`/`daily_updates_limit`/`keys_limit`, `413
+  html_too_large`/`storage_limit`) trae, ademas de los campos legacy, un bloque
+  consistente `{ error, limit, used, tier, upgradeTo, ctaUrl }` — `upgradeTo` es
+  el proximo tier que levanta ESE limite (o `null` si ya estas en el techo
+  `unlimited`), `ctaUrl` la pagina de pricing. Usalo para decirle al usuario a que
+  plan subir.
 
 ### Auto-descubrimiento (recomendado antes de operar)
 
@@ -97,7 +108,10 @@ Las tres usan la **misma API key** y el **mismo backend**.
 y `scopeDefaults`, valores/default de visibility + TTL, limites de content-meta,
 uploads, los 6 brand presets, limites por tier, y que features estan activas.
 Usalo para autoconfigurarte sin hardcodear; el payload se versiona con `version`
-(tolera campos nuevos).
+(actual **3**; tolera campos nuevos). En v3 `features` declara `squash: true` y
+`publicExport: true`, y `endpoints` incluye `squash: "POST
+/api/u/:user/:slug/squash"` y `export: "GET /api/u/:user/:slug/export"` — los
+clientes descubren ambas features sin hardcodear.
 
 ### Convencion de metadata (B8)
 
@@ -169,6 +183,19 @@ Content-Type: application/json
 }
 ```
 
+**Alternativa Markdown (agents-first, recomendado para prosa):** en vez de `html`,
+manda **`markdown`** (excluyente — uno u otro, nunca ambos). El back lo renderiza a
+HTML **seguro** (escapa todo el texto + allowlist → no podes inyectar `<script>`; las
+URLs `javascript:`/`data:` se degradan a texto) y lo **envuelve en tu template** (o en
+el shell de marca si no tenes uno). Guarda el `.md` **fuente** para el round-trip
+(editar -> re-publicar) y marca `sourceFormat: "markdown"`. Sos un agente: escribi el
+md directo, Outbox pone la presentacion — no armes HTML+CSS a mano para un reporte.
+Mandar ambos -> `400 conflicting_content`; ninguno -> `400 missing_content`.
+
+```jsonc
+{ "markdown": "# Reporte\n\nUn **resumen** con `code` y [link](https://x.com).", "slug": "reporte", "model": "claude-opus-4-8" }
+```
+
 Respuesta (`PublishResponse`):
 `{ url, slug, version, visibility, expiresAt, ogImage, quotaRemaining }`.
 - `url` = `https://out-box.dev/u/<user>/<slug>` (compartible; el `/u/` redirige al
@@ -215,6 +242,21 @@ Historial: `GET /api/u/<user>/<slug>/versions` (requireAuth). Volver atras:
 > Gotcha de concurrencia: dos publishes simultaneos al mismo slug pueden colisionar
 > en el numero de version. Evita publicar en paralelo al mismo slug determinista.
 
+**Squash — liberar storage del historial.** Cada version es una copia COMPLETA del
+HTML en R2; un daily republicado a diario acumula historial que se come tu
+`storageGB`. `POST /api/u/<user>/<slug>/squash` **borra el historial** dejando solo
+lo vigente — scope `publish:u` (folder-aware, mismo check que rollback). Body
+opcional `{ "keepOriginal"?: boolean }`:
+- `false` (**DEFAULT**, o body vacio): conserva **SOLO** la version `current`.
+  Override explicito del pin del original.
+- `true`: conserva `current` **+** la version original (la mas vieja). Si `current`
+  YA es la mas vieja, queda una sola.
+
+Respuesta: `{ ok, kept: [N, ...], removed, freedBytes }` (`kept` ascendente,
+`removed` = cuantas se borraron, `freedBytes` = bytes liberados estimados del
+indice). Sin indice de versiones → `404 no_versions`; cross-user → `403`. La poda
+es **irreversible** (borra los `.v<N>.html` de R2): confirmalo con el usuario.
+
 ### 4. Publicar desde un template del catalogo
 
 `POST /api/publish-from-template` — scope `publish:u` + quota. Data max **64KB**.
@@ -237,8 +279,13 @@ Content-Type: application/json
 ```
 
 Templates del catalogo: `status-report | daily-briefing | repo-diff |
-kpis-snapshot | custom`. Catalogo vivo: `GET /api/templates/catalog` o
-`GET /api/templates` (ambos publicos).
+kpis-snapshot | custom`. Catalogo vivo de estos **content templates**: SOLO
+`GET /api/templates` (publico) — devuelve cada template con `id`, `description`,
+`requiredFields` y `optionalFields`.
+
+> No confundir con `GET /api/templates/catalog`: ese devuelve los **6 brand
+> presets visuales** (flujo 13), que son otra cosa. `publish-from-template` usa
+> SOLO `GET /api/templates`.
 
 ### 5. Daily documents — append de bloques fechados
 
@@ -259,10 +306,15 @@ Content-Type: application/json
   "ts": "2026-05-30T13:00:00Z",          // opcional, timestamp del bloque
   "visibility": "private",               // opcional (al crear el daily)
   "title": "Notas del dia",              // opcional
-  "model": "claude-opus-4-8",            // ContentMeta manifest-level (1er append)
+  "model": "claude-opus-4-8",            // OBLIGATORIO en el 1er append (crea el manifest)
   "summary": "..."
 }
 ```
+
+> **`model` es OBLIGATORIO en el PRIMER append** (el que crea el manifest del
+> daily): si falta → `400 missing_model`. `summary` tambien se exige en ese
+> primer append, pero con fallback no-IA derivado de `title`/`html`. En appends
+> POSTERIORES ambos son opcionales (la metadata del manifest es last-write-wins).
 
 Respuesta: `{ blockId, totalBlocks, version, url, date }` — `date` es la clave del
 dia UTC (`YYYY-MM-DD`) en que quedo el bloque (auto-rotacion por fecha UTC); usala
@@ -286,6 +338,10 @@ API). El `/u/<user>/<slug>` legacy **301-redirige** al canonico sin `/u/`.
   respeta sobre un slug son `?share=<token>` y `?date=YYYY-MM-DD` (este ultimo solo
   para dailies). **NO existe `?version=N`**: pasarlo se ignora silenciosamente y
   recibis la version actual.
+- **El HTML servido NO es byte-identico al persistido**: el back inyecta un
+  **widget overlay** self-contained en el `<body>` en serve-time (role-aware:
+  owner vs read-only). Para parsear el **HTML crudo** usa
+  `GET /api/u/<user>/<slug>/export?format=html` (flujo 7), no esta zona publica.
 - Para leer una version **anterior**: (a) `GET /api/u/<user>/<slug>/versions` te
   da el indice de versiones (autenticado), y (b) si la queres restaurar, hace
   rollback con `POST /api/u/<user>/<slug>/rollback` `{ "to": N }` — eso la vuelve la
@@ -295,11 +351,22 @@ Buscar por metadata (title/slug/tags, no fulltext): `GET /api/u/<user>/search?q=
 
 ### 7. Exportar una pagina (machine-readable)
 
-`GET /api/u/<user>/<slug>/export?format=json|html` — scope `publish:u`,
-cross-user 403. Mas comodo que parsear el HTML servido:
+`GET /api/u/<user>/<slug>/export?format=json|html`. Mas comodo que parsear el HTML
+servido:
 - `format=json` (default): `{ model, summary, contenido, title, tags, visibility,
-  version, description, contentType, createdAt, updatedAt, slug, user }`.
+  version, description, contentType, meta, createdAt, updatedAt, slug, user }`.
 - `format=html`: el HTML crudo persistido.
+
+**Acceso (export NO es solo del owner):**
+- **Owner** (Bearer/sesion que coincide con `<user>`): exporta **cualquier**
+  visibility de lo suyo. Respeta verb scope (`publish:u`) y folder-scope.
+- **Export publico**: si el post es **`public`** (visibility EFECTIVA, post-TTL),
+  **cualquier** caller lo exporta — incluso **anonimo** (sin auth) o con la key de
+  otro user. El export ya devuelve raw (sin widget), equivalente a leer el HTML
+  publico + su meta.
+- `unlisted`/`private` **ajeno** (no-owner) → `403 cross_user_export_forbidden`.
+  Un `public` con TTL vencido **degrada a `private`** → `403`. Slug inexistente
+  para un no-owner → `404` (no filtramos existencia).
 
 (El `tar.gz` esta diferido. Para content-templates devuelve el HTML renderizado,
 no la `data` original.)
@@ -363,8 +430,12 @@ Tres mecanismos distintos, con nombres propios:
    Outbox; solo el lo ve, autenticado. `POST /api/grants` (scope `template:u`):
    ```json
    { "recipientUser": "<username>", "resource": "<slug-o-prefijo>",
-     "resourceType": "post", "permissions": ["view"], "expiresInDays": 30 }
+     "resourceType": "post", "permissions": ["comment"], "expiresInDays": 30 }
    ```
+   `permissions` acepta `"view"` | `"comment"` (otro valor → `400
+   invalid_permissions`). **`"comment"` implica `"view"`** (el back agrega `view`
+   automaticamente). Para que el tercero solo LEA, usa `["view"]`; para que ademas
+   pueda **comentar un private** (flujo 16), el grant DEBE incluir `"comment"`.
    Listar: `GET /api/grants` (dados) o `?incoming=1` (recibidos). Revocar (solo
    owner): `DELETE /api/grants/<id>`.
 
@@ -375,11 +446,19 @@ borrar (no es recuperable via API).
 
 ### 13. Template per-user y brand preset
 
-Outbox tiene **6 brand presets**: `paper | minimal | corporate | dark | brutalist
-| editorial`.
+Outbox tiene **6 brand presets** visuales: `paper | minimal | corporate | dark |
+brutalist | editorial`. El catalogo vivo de estos presets es
+`GET /api/templates/catalog` (publico) — **distinto** de `GET /api/templates`
+(los 5 content templates de `publish-from-template`, flujo 4): son dos cosas
+separadas.
 - Cambiar el preset preferido (`stylePreference`): `PUT /api/me/style` con
   `{ "stylePreference": "dark" }` — scope `template:u`. No re-aplica el HTML, solo
   cambia la preferencia. `400 invalid_stylePreference` fuera de los 6.
+  - El mismo `PUT /api/me/style` acepta tambien (solos o combinados con
+    `stylePreference`) los overrides del widget: `widgetColor` (`"auto"` o
+    `#rrggbb`) y `widgetTheme` (`"auto" | "light" | "dark"`). Errores:
+    `400 invalid_widgetColor` / `400 invalid_widgetTheme`. La respuesta refleja
+    solo los campos enviados.
 - Instalar un template del catalogo como wrapper visual:
   `POST /api/template/from-catalog` con `{ "templateId": "..." }` — scope `template:u`.
 - Wrapper HTML propio para publishes con `branding:"full"`:
@@ -396,13 +475,16 @@ Si el usuario quiere emitir una key para que OTRO agente publique en su nombre:
 - Listar: `GET /api/keys` (requireAuth).
 - Crear con scopes explicitos: `POST /api/keys` — scope `genkey:u`. Valida subset
   (no escalation → `403 scope_escalation`); formato malo → `400 invalid_scope_format`.
-- **Atajo agent key folder-scoped** (delegacion / blast radius acotado):
+- **Atajo agent key** (delegacion):
   `POST /api/keys/agent` — scope `genkey:u`:
   ```json
   { "label": "agente-briefing", "folder": "briefings", "days": 30,
     "verbs": ["publish", "list"] }
   ```
-  `folder` → la key queda restringida a ese folder. `days: 0` = nunca expira
+  `folder` es **OPCIONAL**: con `folder` la key queda **restringida** a ese folder
+  (blast radius acotado, recomendado); **sin `folder` la key sale BROAD** — los
+  verbs cubren todo el namespace (scopes sin prefijo `f/`, ej `publish:user`),
+  equivalente al default de `POST /api/keys` type=agent. `days: 0` = nunca expira
   (devuelve `warning_no_expiry`). `verbs` por default `["publish"]` (subset de
   `publish,list,delete,folder,share,template,upload`).
 - Rotar: `POST /api/keys/rotate` — scope `genkey:u` (atomico: genera nueva, revoca
@@ -473,7 +555,8 @@ Via MCP: `outbox_read_comments`, `outbox_create_suggestion`, `outbox_accept_sugg
 6. **Re-publicar al mismo slug = nueva version** (no sobrescritura ciega). Es el
    flow leer→sumar→re-publicar.
 7. **Respeta `429 rate_limited`**: lee `retryAfter` y reintenta. Limites por tier
-   (free: 5/h, 10/dia; pro: 10/h, 100/dia; etc.).
+   (free: 5/h, 10/dia; pro: 10/h, 100/dia; pro_plus/team: 30/h, 500/dia; unlimited:
+   1000/h, 20000/dia). La respuesta trae el bloque CTA (`upgradeTo`/`ctaUrl`).
 8. **Tamanos**: HTML ≤ limite por tier (free 10MB, pago hasta 25MB) en `/publish`
    (limite vivo en `/api/capabilities.publishLimits` o `tierLimits.htmlMaxBytes` de
    `/api/me`); data ≤ 64KB (`publish-from-template`); bloque ≤ 50KB (daily);
