@@ -40,7 +40,37 @@ Fecha: 2026-05-30.
 | 403 | `unknown_user` | el owner de la key no resuelve a un `UserRecord` (flujo de quota en publish/append) |
 | 413 | `html_too_large` | HTML sobre el limite por tier (free 10MB, pago hasta 25MB) en `/publish` |
 | 413 | `data_too_large` · `block_too_large` · `upload_too_large` | data > 64KB (publish-from-template), bloque > 50KB (daily append), upload > 10MB |
-| 429 | `rate_limited` | quota excedida; body `{ error, scope, retryAfter, used, limits }` + header HTTP `retry-after` |
+| 413 | `storage_limit` | el storage TOTAL del tier (`storageGB`) se agotaria con el write; gate best-effort antes de cada write a R2 (publish, daily append, upload). Trae `message` + el bloque CTA |
+| 403 | `keys_limit` | el user alcanzo `agentKeysMax` keys activas de su tier al crear una key (`POST /api/keys`, `POST /api/keys/agent`). Trae `message` + el bloque CTA |
+| 403 | `daily_docs_limit` | slug nuevo para el dia y se supera `dailyDocsMax` (o tier con limit 0). Trae `message`, `active[]` + el bloque CTA |
+| 403 | `daily_updates_limit` | el daily ya alcanzo `dailyUpdatesPerDay` appends/updates en el dia. Trae `message` + el bloque CTA |
+| 429 | `rate_limited` | quota excedida; body `{ error, scope, retryAfter, used, limits }` + el bloque CTA + header HTTP `retry-after` |
+
+#### Shape comun de las respuestas de limite (CTA de upgrade)
+
+Todas las respuestas de limite (`429 rate_limited`, `403
+daily_docs_limit`/`daily_updates_limit`/`keys_limit`, `413
+html_too_large`/`storage_limit`) incluyen — **ademas** de los campos legacy de cada
+gate (`error`, `message`, `retryAfter`, `used`, `limits`, `active`, ...) — un bloque
+TIPADO consistente que el cliente puede renderizar como "subi a `<tier>`" sin parsear
+strings:
+
+```jsonc
+{
+  "error": "storage_limit",     // discrimina el gate (= el codigo de la tabla)
+  "limit": 107374182,           // tope numerico del tier ACTUAL para esa dimension
+  "used": 104857600,            // valor actual consumido (publishes / keys / bytes / ...)
+  "tier": "free",               // tier actual del user
+  "upgradeTo": "pro",           // proximo tier que LEVANTA este limite (null si ya en el techo)
+  "ctaUrl": "https://out-box.dev/pricing",  // null si no hay upgrade posible
+  "message": "..."              // legacy: copy human-readable del gate
+}
+```
+
+El contrato es **ADITIVO**: los campos legacy se preservan tal cual (clientes viejos
+los siguen leyendo). `upgradeTo`/`ctaUrl` quedan `null` cuando el user ya esta en el
+tier que es techo para esa dimension (`unlimited`). Nota: `rate_limited` manda `used`
+como objeto `{ hour, day }` (shape legacy), pisando el `number` del bloque CTA.
 
 ---
 
@@ -49,15 +79,24 @@ Fecha: 2026-05-30.
 ### GET /api/capabilities
 **Publico** (sin auth). Describe que soporta el back para que clientes (CLI, MCP,
 skill, rust, front) se autoconfiguren sin hardcodear. `cache-control: public,
-max-age=300`. Forma versionada con `version` (forward-compat — tolera campos nuevos).
+max-age=300`. Forma versionada con `version` (actual **3**; forward-compat — tolera
+campos nuevos).
 
 Devuelve, entre otros: `apiBase`/`siteBase`, `verbs`, `scopeFormat`,
 `scopeDefaults` (human/agent/claim), `visibility` (values, default `private`, ttl,
 `inheritFolderVisibility`), `contentMeta` (`modelRequired: true`, limites),
-`uploads`, `templates.brandPresets` (los 6) + `count`, `tiers`, `publishLimits`,
-`endpoints`, y `features` (uploads, exportJson, ttlVisibility, feedPrefixVersion,
-dailyDocs, versioning, grants, shareTokens, folderScopedKeys, deviceFlowClaim,
-quotaAtomicDO, `comments`).
+`uploads`, `templates.brandPresets` (los 6) + `count`, `tiers` (incluye el tier
+`unlimited` y el campo `dailyUpdatesPerDay`), `publishLimits`, `endpoints`, y
+`features`.
+
+- **`endpoints`** incluye `export: "GET /api/u/:user/:slug/export"` y
+  `squash: "POST /api/u/:user/:slug/squash"` (ademas de publish,
+  publishFromTemplate, list, me, recent, uploads, capabilities).
+- **`features`** declara: uploads, exportJson, exportTarGz (`false`, diferido),
+  ttlVisibility, feedPrefixVersion, dailyDocs, versioning, grants, shareTokens,
+  folderScopedKeys, deviceFlowClaim, quotaAtomicDO, comments, suggestions,
+  accessView, widget, **`squash: true`** (poda de historial menos current) y
+  **`publicExport: true`** (export de posts publicos por no-owners, auth opcional).
 
 ---
 
@@ -116,6 +155,7 @@ Errores de `/publish`:
 | 400 | `invalid_slug` | slug fuera de `[A-Za-z0-9_-]{1,64}` por segmento / >6 niveles / >200 chars |
 | 400 | `missing_model` | falta `model` |
 | 413 | `html_too_large` | HTML sobre el limite por tier |
+| 413 | `storage_limit` | el storage TOTAL del tier (`storageGB`) se agotaria con el write; trae `message` + el bloque CTA |
 | 403 | `unknown_user` | el owner de la key no resuelve a un usuario |
 | 429 | `rate_limited` | quota excedida |
 
@@ -182,12 +222,26 @@ El HTML servido por la zona publica lleva inyectado un **widget overlay** self-c
 Para el HTML crudo usar `GET /api/u/<user>/<slug>/export?format=html`.
 
 ### GET /api/u/&lt;user&gt;/&lt;slug&gt;/export?format=json|html
-**B9** — export machine-readable. **Scope** `publish:u` (folder-aware), cross-user → `403`.
+**B9** — export machine-readable. **Auth OPCIONAL** (ya NO es owner-only).
 - `format=json` (default): `{ user, slug, title, tags, visibility, version, model,
   summary, description, contentType, meta, createdAt, updatedAt, contenido }`
   (`contenido` = HTML crudo persistido).
 - `format=html`: el HTML crudo (`text/html`).
 - `tar.gz` diferido. Para content-templates devuelve el HTML renderizado.
+
+**Acceso:**
+- **Owner** (auth Bearer/sesion que coincide con `<user>`): exporta **cualquier**
+  visibility de lo suyo. Exige verb scope `publish:u` (folder-aware) — folder-scoped
+  fuera de su folder → `403 slug_not_under_allowed_folder` (con `message`).
+- **Export publico** (no-owner): si la visibility **EFECTIVA** (post-degradacion
+  TTL) es `public`, **cualquier** caller lo exporta — incluso **sin auth** o con la
+  key de otro user (el export ya devuelve raw, equivalente a leer el HTML publico).
+- `unlisted`/`private` de **otro** user → `403 cross_user_export_forbidden`. Un
+  `public` con TTL vencido degrada a `private` → `403`.
+- `404 not_found` si falta el `.html`/`.meta.json` (un no-owner sobre slug
+  inexistente recibe `404`, no filtramos existencia). `500 corrupt_meta` si el meta
+  no parsea. `400 invalid_format` si `format` no es `json`/`html`. `400
+  invalid_user`/`invalid_slug`.
 
 ---
 
@@ -237,6 +291,33 @@ Errores: `400 invalid_version` (singular; `to` ausente/no-int/<1), `400 invalid_
 (body no parsea), `400 invalid_slug`, `404 version_not_found`, `403 cross_user_forbidden`.
 Exito: `{ ok: true, current }`. (Nota: `diff` usa `invalid_versions` plural, rollback
 `invalid_version` singular.)
+
+### POST /api/u/&lt;user&gt;/&lt;slug&gt;/squash
+Poda el historial de versiones para **liberar storage**: borra de R2 los
+`<slug>.v<N>.html` que ya no se conservan y reescribe el `.versions.json`. Cada
+version es una copia COMPLETA del HTML; un slug muy editado (ej. un daily
+republicado a diario) crece sin techo en historial — squash recorta a lo vigente.
+**Scope** `publish:u` (**folder-aware**, mismo check que rollback: folder-scoped
+fuera de su folder → `403 slug_not_under_allowed_folder` con `allowedFolders`).
+Cross-user → `403 cross_user_forbidden`.
+
+Body opcional (tolera body vacio / no-JSON → `keepOriginal: false`):
+```jsonc
+{ "keepOriginal": false }   // false (DEFAULT): conserva SOLO la version current
+                            // true: conserva current + la version original (la mas vieja)
+```
+- `keepOriginal: false` (default) hace un override **explicito** del pin del
+  original que respeta la poda automatica del publish — el owner pidio liberar todo
+  el historial salvo lo vigente. La version `current` NUNCA se borra (es la que se
+  sirve como `<slug>.html`).
+- `keepOriginal: true`: conserva `current` + el original; si `current` YA es el
+  original, queda una sola version.
+
+Exito `200`: `{ ok: true, kept: [N, ...], removed, freedBytes }` — `kept` son los
+numeros de version conservados (ascendente), `removed` cuantos `.v<N>.html` se
+borraron, `freedBytes` la suma de `contentSize` de las borradas (estimado del
+indice, no re-lee R2; `0` si no se borro nada). Sin indice de versiones →
+`404 no_versions`. La poda es **irreversible**.
 
 ---
 
@@ -295,7 +376,9 @@ Errores:
 | Status | `error` | Cuando |
 |---|---|---|
 | 409 | `conflict_with_static_post` | el slug ya es un HTML estatico |
-| 403 | `daily_docs_limit` | slug nuevo para el dia y se supera `dailyDocsMax` (o tier con limit 0); trae `{ message, limit, tier, active[] }` |
+| 403 | `daily_docs_limit` | slug nuevo para el dia y se supera `dailyDocsMax` (o tier con limit 0); trae `{ message, active[] }` + el bloque CTA |
+| 403 | `daily_updates_limit` | el daily ya alcanzo `dailyUpdatesPerDay` appends/updates en el dia (se enforce en CADA append, no solo el 1ro); trae `message` + el bloque CTA |
+| 413 | `storage_limit` | el storage TOTAL del tier (`storageGB`) se agotaria con el bloque; trae `message` + el bloque CTA |
 | 400 | `invalid_body` | body no parsea |
 | 400 | `invalid_html` | `html` no-string o vacio |
 | 413 | `block_too_large` | bloque > 50KB (trae `maxBytes`) |
@@ -519,7 +602,9 @@ Lista las keys propias (sin plaintext). **requireAuth**.
 ### POST /api/keys
 Crea una key con scopes explicitos. **Scope** `genkey:u`. Los scopes pedidos deben
 ser subset de los del principal (sino `403 scope_escalation`). Formato invalido →
-`400 invalid_scope_format`. Devuelve el plaintext una sola vez.
+`400 invalid_scope_format`. Si el user ya tiene `agentKeysMax` keys activas de su
+tier → `403 keys_limit` (con `message` + el bloque CTA). Devuelve el plaintext una
+sola vez.
 
 ### POST /api/keys/agent
 Atajo para emitir una **agent key folder-scoped** (delegacion / blast radius
@@ -534,7 +619,9 @@ acotado). **Scope** `genkey:u`.
 ```
 `folder` es opcional: sin `folder` la agent key sale **BROAD** (scopes sin prefijo `f/`,
 ej. `publish:user`), equivalente al default de `POST /api/keys` type=agent; solo con
-`folder` queda restringida. Respuesta completa:
+`folder` queda restringida. Mismo gate de cap que `POST /api/keys`: si el user ya
+tiene `agentKeysMax` keys activas → `403 keys_limit` (con `message` + el bloque CTA).
+Respuesta completa:
 `{ plaintext, keyId, label, type, scopes, rateLimits, expiresAt, folder, days, warning, warning_no_expiry? }`
 (`days` es `null` cuando nunca expira).
 
@@ -580,11 +667,11 @@ billing). Con auth de sesion agrega ademas `email`/`name`/`avatarUrl`.
 
 ### GET /api/me/usage
 Consumo vs limites del tier. **requireAuth**. `?refresh=true` fuerza recalculo
-(cache 300s). `tier` ∈ `free | pro | pro_plus | team`. Respuesta (`UsageResponse`):
+(cache 300s). `tier` ∈ `free | pro | pro_plus | team | unlimited`. Respuesta (`UsageResponse`):
 ```jsonc
 {
   "user", "tier",
-  "limits": { "publishPerHour", "publishPerDay", "storageGB", "agentKeysMax", "dailyDocsMax" },
+  "limits": { "publishPerHour", "publishPerDay", "storageGB", "agentKeysMax", "dailyDocsMax", "dailyUpdatesPerDay" },
   "usage": {
     "publishes": { "hour", "day" },
     "storage": { "usedBytes", "usedMB", "limitMB", "pct", "truncated" },
@@ -600,12 +687,21 @@ Consumo vs limites del tier. **requireAuth**. `?refresh=true` fuerza recalculo
 
 Limites por tier (fuente: `lib/tier-limits.ts`):
 
-| Tier | publish/hora | publish/dia | storageGB | agentKeysMax | dailyDocsMax |
-|---|---|---|---|---|---|
-| free | 5 | 10 | 0.1 | 1 | 1 |
-| pro | 10 | 100 | 5 | ~unlimited (999) | 3 |
-| pro_plus | 30 | 500 | 25 | ~unlimited (999) | 10 |
-| team | 30 | 500 | 25 | ~unlimited (999) | 999 |
+| Tier | publish/hora | publish/dia | storageGB | agentKeysMax | dailyDocsMax | dailyUpdatesPerDay |
+|---|---|---|---|---|---|---|
+| free | 5 | 10 | 0.1 | 1 | 1 | 20 |
+| pro | 10 | 100 | 5 | ~unlimited (999) | 3 | 100 |
+| pro_plus | 30 | 500 | 25 | ~unlimited (999) | 10 | 300 |
+| team | 30 | 500 | 25 | ~unlimited (999) | 999 | 999 |
+| unlimited ($50) | 1000 | 20000 | 100 | ~unlimited (999) | 999 | 9999 |
+
+- **`dailyUpdatesPerDay`**: cap de appends/updates por dia a daily docs (DAU cap),
+  enforce en CADA append → `403 daily_updates_limit` al superarlo.
+- **`unlimited`** ($50, "full libre"): SIN caps de producto, pero con un techo de
+  seguridad anti-bot/anti-runaway (numeros altisimos que un humano o agente sano
+  nunca toca). Es el techo de la escalera de upgrade individual (`free → pro →
+  pro_plus → unlimited`; `team` queda fuera de esa escalera). En `/api/me/usage`,
+  `tier` ∈ `free | pro | pro_plus | team | unlimited`.
 
 ### GET /api/audit
 Eventos de auditoria del owner. **Scope** `audit:self`. Ventana 7 dias. El campo de

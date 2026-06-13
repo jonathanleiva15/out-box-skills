@@ -1,6 +1,6 @@
 ---
 name: outbox-publish
-version: 1.0.1
+version: 1.1.0
 description: >-
   Publica, lee, actualiza y gestiona paginas (HTMLs) en Outbox (out-box.dev) —
   la biblioteca privada en linea agents-first del usuario, via la API REST con
@@ -83,13 +83,24 @@ Las tres usan la **misma API key** y el **mismo backend**.
 - **Errores**: JSON `{ "error": "<code>", ... }`. Transversales:
   - `401`: `missing_auth`, `invalid_key`, `key_revoked`, `key_expired`.
   - `403`: `forbidden` (+ `missingScope`/`missingAnyOf`), `scope_escalation`,
-    `cross_user_*`.
+    `cross_user_*`, `keys_limit` (cap de keys activas del tier, `agentKeysMax`),
+    `daily_docs_limit` (cap de daily docs distintos del tier), `daily_updates_limit`
+    (cap de updates/dia a daily docs, `dailyUpdatesPerDay`).
   - `413`: HTML sobre el limite por tier (free 10MB, pago hasta 25MB) en
-    `/publish`, data > 64KB (`publish-from-template`), bloque > 50KB (daily),
-    upload > 10MB. El limite vivo del tier esta en `/api/capabilities.publishLimits`
-    o `tierLimits.htmlMaxBytes` de `/api/me`.
+    `/publish` (`html_too_large`), data > 64KB (`publish-from-template`),
+    bloque > 50KB (daily), upload > 10MB; **`storage_limit`** cuando el storage
+    total del tier (`storageGB`) se agotaria con el write (publish/append/upload).
+    El limite vivo del tier esta en `/api/capabilities.publishLimits` o
+    `tierLimits.htmlMaxBytes` de `/api/me`.
   - `429`: `rate_limited` (+ `retryAfter`). Respeta y reintenta.
   - `400`: validacion (ej. `missing_model`, `invalid_visibility`, `invalid_ttl`).
+- **CTA de upgrade estructurado**: TODA respuesta de limite (`429 rate_limited`,
+  `403 daily_docs_limit`/`daily_updates_limit`/`keys_limit`, `413
+  html_too_large`/`storage_limit`) trae, ademas de los campos legacy, un bloque
+  consistente `{ error, limit, used, tier, upgradeTo, ctaUrl }` — `upgradeTo` es
+  el proximo tier que levanta ESE limite (o `null` si ya estas en el techo
+  `unlimited`), `ctaUrl` la pagina de pricing. Usalo para decirle al usuario a que
+  plan subir.
 
 ### Auto-descubrimiento (recomendado antes de operar)
 
@@ -97,7 +108,10 @@ Las tres usan la **misma API key** y el **mismo backend**.
 y `scopeDefaults`, valores/default de visibility + TTL, limites de content-meta,
 uploads, los 6 brand presets, limites por tier, y que features estan activas.
 Usalo para autoconfigurarte sin hardcodear; el payload se versiona con `version`
-(tolera campos nuevos).
+(actual **3**; tolera campos nuevos). En v3 `features` declara `squash: true` y
+`publicExport: true`, y `endpoints` incluye `squash: "POST
+/api/u/:user/:slug/squash"` y `export: "GET /api/u/:user/:slug/export"` — los
+clientes descubren ambas features sin hardcodear.
 
 ### Convencion de metadata (B8)
 
@@ -215,6 +229,21 @@ Historial: `GET /api/u/<user>/<slug>/versions` (requireAuth). Volver atras:
 > Gotcha de concurrencia: dos publishes simultaneos al mismo slug pueden colisionar
 > en el numero de version. Evita publicar en paralelo al mismo slug determinista.
 
+**Squash — liberar storage del historial.** Cada version es una copia COMPLETA del
+HTML en R2; un daily republicado a diario acumula historial que se come tu
+`storageGB`. `POST /api/u/<user>/<slug>/squash` **borra el historial** dejando solo
+lo vigente — scope `publish:u` (folder-aware, mismo check que rollback). Body
+opcional `{ "keepOriginal"?: boolean }`:
+- `false` (**DEFAULT**, o body vacio): conserva **SOLO** la version `current`.
+  Override explicito del pin del original.
+- `true`: conserva `current` **+** la version original (la mas vieja). Si `current`
+  YA es la mas vieja, queda una sola.
+
+Respuesta: `{ ok, kept: [N, ...], removed, freedBytes }` (`kept` ascendente,
+`removed` = cuantas se borraron, `freedBytes` = bytes liberados estimados del
+indice). Sin indice de versiones → `404 no_versions`; cross-user → `403`. La poda
+es **irreversible** (borra los `.v<N>.html` de R2): confirmalo con el usuario.
+
 ### 4. Publicar desde un template del catalogo
 
 `POST /api/publish-from-template` — scope `publish:u` + quota. Data max **64KB**.
@@ -309,11 +338,22 @@ Buscar por metadata (title/slug/tags, no fulltext): `GET /api/u/<user>/search?q=
 
 ### 7. Exportar una pagina (machine-readable)
 
-`GET /api/u/<user>/<slug>/export?format=json|html` — scope `publish:u`,
-cross-user 403. Mas comodo que parsear el HTML servido:
+`GET /api/u/<user>/<slug>/export?format=json|html`. Mas comodo que parsear el HTML
+servido:
 - `format=json` (default): `{ model, summary, contenido, title, tags, visibility,
   version, description, contentType, meta, createdAt, updatedAt, slug, user }`.
 - `format=html`: el HTML crudo persistido.
+
+**Acceso (export NO es solo del owner):**
+- **Owner** (Bearer/sesion que coincide con `<user>`): exporta **cualquier**
+  visibility de lo suyo. Respeta verb scope (`publish:u`) y folder-scope.
+- **Export publico**: si el post es **`public`** (visibility EFECTIVA, post-TTL),
+  **cualquier** caller lo exporta — incluso **anonimo** (sin auth) o con la key de
+  otro user. El export ya devuelve raw (sin widget), equivalente a leer el HTML
+  publico + su meta.
+- `unlisted`/`private` **ajeno** (no-owner) → `403 cross_user_export_forbidden`.
+  Un `public` con TTL vencido **degrada a `private`** → `403`. Slug inexistente
+  para un no-owner → `404` (no filtramos existencia).
 
 (El `tar.gz` esta diferido. Para content-templates devuelve el HTML renderizado,
 no la `data` original.)
@@ -502,7 +542,8 @@ Via MCP: `outbox_read_comments`, `outbox_create_suggestion`, `outbox_accept_sugg
 6. **Re-publicar al mismo slug = nueva version** (no sobrescritura ciega). Es el
    flow leer→sumar→re-publicar.
 7. **Respeta `429 rate_limited`**: lee `retryAfter` y reintenta. Limites por tier
-   (free: 5/h, 10/dia; pro: 10/h, 100/dia; etc.).
+   (free: 5/h, 10/dia; pro: 10/h, 100/dia; pro_plus/team: 30/h, 500/dia; unlimited:
+   1000/h, 20000/dia). La respuesta trae el bloque CTA (`upgradeTo`/`ctaUrl`).
 8. **Tamanos**: HTML ≤ limite por tier (free 10MB, pago hasta 25MB) en `/publish`
    (limite vivo en `/api/capabilities.publishLimits` o `tierLimits.htmlMaxBytes` de
    `/api/me`); data ≤ 64KB (`publish-from-template`); bloque ≤ 50KB (daily);
