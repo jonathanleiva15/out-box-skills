@@ -95,22 +95,37 @@ Devuelve, entre otros: `apiBase`/`siteBase`, `verbs`, `scopeFormat`,
 - **`features`** declara: uploads, exportJson, exportTarGz (`false`, diferido),
   ttlVisibility, feedPrefixVersion, dailyDocs, versioning, grants, shareTokens,
   folderScopedKeys, deviceFlowClaim, quotaAtomicDO, comments, suggestions,
-  accessView, widget, **`squash: true`** (poda de historial menos current) y
-  **`publicExport: true`** (export de posts publicos por no-owners, auth opcional).
+  accessView, widget, **`squash: true`** (poda de historial menos current),
+  **`publicExport: true`** (export de posts publicos por no-owners, auth opcional) y
+  **`markdown: true`** (publish acepta `markdown`, se renderiza a HTML seguro).
+- **`publishFormats`**: `["html", "markdown"]` — formatos de fuente aceptados por
+  `POST /publish` (excluyentes). El post expone `sourceFormat` en su meta.
 
 ---
 
 ## Contenido / publicacion
 
 ### POST /publish
-Publica una pagina HTML clasica. **Scope** `publish:u` + quota. HTML max **por tier
-(free 10MB, pago hasta 25MB)**; limite vivo en `/api/capabilities.publishLimits` o
-`tierLimits.htmlMaxBytes` de `/api/me`.
+Publica una pagina con `html` crudo **O** `markdown`. **Scope** `publish:u` + quota.
+Peso max **por tier** (free 10MB, pago hasta 25MB); limite vivo en
+`/api/capabilities.publishLimits` o `tierLimits.htmlMaxBytes` de `/api/me`.
+
+**Dos formatos de fuente (excluyentes — manda UNO):**
+- `html`: HTML crudo, se sirve **tal cual** (vos controlas el documento completo).
+- `markdown` (agents-first): el back lo renderiza a **HTML seguro** (escapa todo el
+  texto + allowlist de tags → imposible inyectar `<script>`; URLs `javascript:`/`data:`
+  se degradan a texto) y lo **envuelve en tu template** (o en el shell de marca si no
+  tenes uno). Guarda el `.md` **fuente** para el round-trip (`export` lo devuelve) y
+  marca `meta.sourceFormat: "markdown"`. Es el camino natural del agente: escribis md,
+  Outbox pone la presentacion.
+
+Mandar AMBOS → `400 conflicting_content`. No mandar NINGUNO → `400 missing_content`.
 
 Body:
 ```jsonc
 {
-  "html": "<!doctype html>...",        // requerido, <= limite por tier (free 10MB, pago hasta 25MB)
+  "html": "<!doctype html>...",        // requerido SI no mandas markdown; <= limite por tier
+  "markdown": "# Titulo\n\nTexto...",  // alternativa a html (excluyente): se renderiza + envuelve en template/marca
   "slug": "mi-slug",                   // opcional; default nanoid(8). [A-Za-z0-9_-]{1,64} por segmento, <=6 niveles, <=200 chars totales
   "title": "Titulo",                   // opcional
   "tags": ["a", "b"],                  // opcional
@@ -151,7 +166,8 @@ Errores de `/publish`:
 | Status | `error` | Cuando |
 |---|---|---|
 | 400 | `invalid_json` | el body no es JSON valido |
-| 400 | `missing_html` | falta `html` o es string vacio |
+| 400 | `missing_content` | no viene ni `html` ni `markdown` (ambos vacios/ausentes) |
+| 400 | `conflicting_content` | vienen `html` Y `markdown` a la vez (excluyentes) |
 | 400 | `invalid_slug` | slug fuera de `[A-Za-z0-9_-]{1,64}` por segmento / >6 niveles / >200 chars |
 | 400 | `missing_model` | falta `model` |
 | 413 | `html_too_large` | HTML sobre el limite por tier |
@@ -224,8 +240,9 @@ Para el HTML crudo usar `GET /api/u/<user>/<slug>/export?format=html`.
 ### GET /api/u/&lt;user&gt;/&lt;slug&gt;/export?format=json|html
 **B9** — export machine-readable. **Auth OPCIONAL** (ya NO es owner-only).
 - `format=json` (default): `{ user, slug, title, tags, visibility, version, model,
-  summary, description, contentType, meta, createdAt, updatedAt, contenido }`
-  (`contenido` = HTML crudo persistido).
+  summary, description, contentType, sourceFormat, meta, createdAt, updatedAt, contenido }`
+  (`contenido` = HTML crudo persistido; `sourceFormat` = `"markdown"` o `"html"` segun
+  como se publico — si es markdown, el `.md` fuente esta en R2 para re-publicar).
 - `format=html`: el HTML crudo (`text/html`).
 - `tar.gz` diferido. Para content-templates devuelve el HTML renderizado.
 

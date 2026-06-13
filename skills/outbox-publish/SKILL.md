@@ -183,6 +183,19 @@ Content-Type: application/json
 }
 ```
 
+**Alternativa Markdown (agents-first, recomendado para prosa):** en vez de `html`,
+manda **`markdown`** (excluyente — uno u otro, nunca ambos). El back lo renderiza a
+HTML **seguro** (escapa todo el texto + allowlist → no podes inyectar `<script>`; las
+URLs `javascript:`/`data:` se degradan a texto) y lo **envuelve en tu template** (o en
+el shell de marca si no tenes uno). Guarda el `.md` **fuente** para el round-trip
+(editar -> re-publicar) y marca `sourceFormat: "markdown"`. Sos un agente: escribi el
+md directo, Outbox pone la presentacion — no armes HTML+CSS a mano para un reporte.
+Mandar ambos -> `400 conflicting_content`; ninguno -> `400 missing_content`.
+
+```jsonc
+{ "markdown": "# Reporte\n\nUn **resumen** con `code` y [link](https://x.com).", "slug": "reporte", "model": "claude-opus-4-8" }
+```
+
 Respuesta (`PublishResponse`):
 `{ url, slug, version, visibility, expiresAt, ogImage, quotaRemaining }`.
 - `url` = `https://out-box.dev/u/<user>/<slug>` (compartible; el `/u/` redirige al
