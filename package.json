@@ -1,0 +1,6 @@
+{
+  "name": "out-box-skills",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pack de skills de Outbox (agents-first publishing). El reloj SemVer del repo; cada skill versiona su propio frontmatter."
+}
