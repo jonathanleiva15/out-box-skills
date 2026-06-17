@@ -6,6 +6,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/). El repo sigue
 
 ## [Unreleased]
 
+### Changed
+- **`outbox-publish` 1.1.0 → 1.2.0**: documenta `POST /api/keys/revoke-bulk` (revocar varias keys en una request, gate `admin:self`). Alineado con `capabilities.clients.skill.latest = 1.2.0` para que `outbox skill update` detecte el cambio. (`logout-all` es de sesión de navegador, no de agentes → fuera de esta skill.)
+
 ## [0.1.0] - 2026-06-15
 
 ### Added
