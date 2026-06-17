@@ -655,6 +655,13 @@ Revoca una key. **Scope** `admin:self`. **Path sin prefijo `/api`** (intencional
 { "keyId": "<id>" }
 ```
 
+### POST /api/keys/revoke-bulk
+Revoca VARIAS keys del owner en una sola request (bulk de `/admin/revoke`). **Scope**
+`admin:self`. Body `{ "keyIds": ["<id>", ...] }` (shortKeyIds, máx 100 por request).
+Solo revoca keys del propio user (defensa owner-only); deduplica. Respuesta:
+`{ ok, revoked: [...], alreadyRevoked: [...], notFound: [...] }`. Errores: `400
+missing_keyIds`, `400 too_many_keys`.
+
 ### Device flow (conseguir una key desde cero, headless)
 
 #### POST /api/auth/claim/start
