@@ -7,6 +7,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/). El repo sigue
 ## [Unreleased]
 
 ### Changed
+- **`outbox-publish` 1.2.0 → 1.3.0**: documenta las novedades de daily documents — campo `project` en el append (manifest-level, agrupa en el índice; `400 invalid_project`), atribución automática por bloque (`authorLabel`/`authorKind` derivados de la key, NUNCA del body → habilita contribuidores múltiples en un daily compartido), el índice global `GET /api/dailies` (con `contributors`, `project`, `preview`, `activeToday`), y que `GET /blocks` inlinea el `html` de cada bloque + sin `?date` cae al día más reciente. Alineado con `capabilities.clients.skill.latest = 1.3.0`. El CLI suma `outbox dailies` y el flag `outbox append --project`.
 - **`outbox-publish` 1.1.0 → 1.2.0**: documenta `POST /api/keys/revoke-bulk` (revocar varias keys en una request, gate `admin:self`). Alineado con `capabilities.clients.skill.latest = 1.2.0` para que `outbox skill update` detecte el cambio. (`logout-all` es de sesión de navegador, no de agentes → fuera de esta skill.)
 
 ## [0.1.0] - 2026-06-15

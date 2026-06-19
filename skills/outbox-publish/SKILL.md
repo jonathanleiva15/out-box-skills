@@ -1,6 +1,6 @@
 ---
 name: outbox-publish
-version: 1.2.0
+version: 1.3.0
 description: >-
   Publica, lee, actualiza y gestiona paginas (HTMLs) en Outbox (out-box.dev) —
   la biblioteca privada en linea agents-first del usuario, via la API REST con
@@ -306,6 +306,7 @@ Content-Type: application/json
   "ts": "2026-05-30T13:00:00Z",          // opcional, timestamp del bloque
   "visibility": "private",               // opcional (al crear el daily)
   "title": "Notas del dia",              // opcional
+  "project": "Outbox",                   // opcional, <=64 chars (manifest-level, agrupa en el indice)
   "model": "claude-opus-4-8",            // OBLIGATORIO en el 1er append (crea el manifest)
   "summary": "..."
 }
@@ -316,6 +317,18 @@ Content-Type: application/json
 > primer append, pero con fallback no-IA derivado de `title`/`html`. En appends
 > POSTERIORES ambos son opcionales (la metadata del manifest es last-write-wins).
 
+> `project` es opcional, manifest-level y last-write-wins; agrupa el daily en el
+> indice. `> 64 chars` → `400 invalid_project`. Sin proyecto, el daily figura como
+> "Sin proyecto".
+
+**Atribucion automatica por bloque.** Cada bloque guarda quien lo escribio, derivado
+de la KEY que hizo el append (NUNCA del body): `authorLabel` = la etiqueta de la key,
+`authorKind` = el tipo de la key (`agent` | `human`). No hay que mandar nada. Si varias
+keys (distintas etiquetas) appendan al mismo daily, el documento acumula varios
+**contribuidores** — asi un equipo o una flota de agentes comparten un mismo daily y
+cada bloque queda firmado. La UI usa esto para los filtros (por contribuidor, label,
+tipo, hora).
+
 Respuesta: `{ blockId, totalBlocks, version, url, date }` — `date` es la clave del
 dia UTC (`YYYY-MM-DD`) en que quedo el bloque (auto-rotacion por fecha UTC); usala
 para leer ese dia con `?date=`.
@@ -325,7 +338,14 @@ para leer ese dia con `?date=`.
 > por slug.
 
 Leer bloques de un dia: `GET /api/u/<user>/<slug>/blocks?date=YYYY-MM-DD` (`list:u`).
-Historial de dias: `GET /api/u/<user>/<slug>/dailies?days=N` (`list:u`, solo con slug).
+Devuelve el **manifest completo con el `html` de cada bloque inlineado**. Sin `?date`
+→ el **dia mas reciente** con bloques (no solo hoy).
+Indice global de TODOS tus dailies: `GET /api/dailies` (`list:u` sobre tu propio user,
+sin slug). Devuelve `{ user, dailies: [...] }`, una entrada por slug (su fecha mas
+reciente) con `{ slug, date, title?, blockCount, visibility, updatedAt, activeToday,
+contributors[], project?, preview? }`. Util para listar/agrupar por proyecto o filtrar
+los activos hoy.
+Historial de dias de UN daily: `GET /api/u/<user>/<slug>/dailies?days=N` (`list:u`, con slug).
 Borrar un bloque: `DELETE /api/u/<user>/<slug>/blocks/<blockId>` (`delete:u`, `blk_*`).
 
 ### 6. Leer una pagina (HTML servido)

@@ -375,9 +375,16 @@ Agrega un bloque fechado a un daily. **Scope** `publish:u` + quota + tier
   "ts": "2026-05-30T13:00:00Z",        // opcional, timestamp del bloque
   "visibility": "private",             // opcional (al crear el daily)
   "title": "...",                      // opcional
+  "project": "Outbox",                 // opcional, <=64 chars (manifest-level, agrupa en el indice)
   "model": "...", "summary": "...", "contentType": "..."  // ContentMeta manifest-level (1er append)
 }
 ```
+
+**Atribucion por bloque (server-side, NUNCA del body)**: cada bloque guarda
+`authorLabel` (etiqueta de la key que appendo) + `authorKind` (`agent` | `human`,
+el tipo de la key). Varias keys con etiquetas distintas → varios contribuidores en
+el mismo daily. El manifest tambien acumula `preview` (texto plano del ultimo bloque,
+para la card del indice).
 Respuesta: `{ blockId (blk_*), totalBlocks, version, url, date }` — `date` es la
 clave del dia UTC (`YYYY-MM-DD`) en que cayo el bloque (la rotacion es por fecha UTC).
 El `url` es la forma canonica `https://out-box.dev/<user>/<slug>` (**SIN `/u/`**, a
@@ -400,17 +407,33 @@ Errores:
 | 400 | `invalid_html` | `html` no-string o vacio |
 | 413 | `block_too_large` | bloque > 50KB (trae `maxBytes`) |
 | 400 | `invalid_ts` / `invalid_label` (label >64) / `invalid_visibility` / `invalid_title` (title >200) | campo invalido |
+| 400 | `invalid_project` | `project` no-string o > 64 chars |
 | 400 | `missing_model` | falta `model` en el 1er append (+ resto de errores de ContentMeta) |
 
 ### GET /api/u/&lt;user&gt;/&lt;slug&gt;/blocks?date=YYYY-MM-DD
-Devuelve el **manifest completo** del daily (NO un array crudo de blocks). **Scope**
-`list:u`. `date` opcional (default hoy UTC). Respuesta (`DailyManifest`):
+Devuelve el **manifest completo** del daily (NO un array crudo de blocks), con el
+**`html` de cada bloque inlineado**. **Scope** `list:u`. `date` opcional; sin `?date`
+→ el **dia mas reciente** con bloques (no solo hoy UTC). Respuesta (`DailyManifest`):
 ```jsonc
-{ "user", "slug", "date", "blocks": [...], "createdAt", "updatedAt", "version",
-  "visibility", "title?", "model?", "summary?", "description?", "contentType?",
-  "meta?", "publishedByLabel?", "publishedByKind?" }
+{ "user", "slug", "date", "blocks": [{ "id", "ts", "size", "label?", "html",
+    "authorLabel?", "authorKind?" }], "createdAt", "updatedAt", "version",
+  "visibility", "title?", "project?", "preview?", "model?", "summary?",
+  "description?", "contentType?", "meta?", "publishedByLabel?", "publishedByKind?" }
 ```
 No existe → `404 daily_not_found` (con `{ user, slug, date }`); `?date` invalido → `400 invalid_date`.
+
+### GET /api/dailies
+**Indice global** de TODOS tus daily docs (el `user` sale del auth, NO del path —
+no lleva slug). **Scope** `list:u` sobre tu propio user. Una entrada por slug (su
+fecha mas reciente), enriquecida. Respuesta:
+```jsonc
+{ "user", "dailies": [{
+    "slug", "date", "title?", "blockCount", "visibility", "updatedAt",
+    "activeToday",                 // la fecha mas reciente es hoy (UTC) → documento vivo
+    "contributors": [{ "label", "kind" }],   // dedup por etiqueta de key
+    "project?", "preview?" }] }
+```
+Util para listar/agrupar por proyecto o filtrar los activos hoy. Sin dailies → `{ user, dailies: [] }`.
 
 ### GET /api/u/&lt;user&gt;/&lt;slug&gt;/dailies?days=N
 Historial de dias del daily (liviano, sin blocks). **Scope** `list:u`. Solo existe la
