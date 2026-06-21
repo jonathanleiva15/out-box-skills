@@ -2,7 +2,7 @@
 
 ## Estado actual
 
-- Skill **`outbox-publish` 1.2.0** — publicada e instalable via skills.sh
+- Skill **`outbox-publish` 1.4.0** — publicada e instalable via skills.sh
   (`npx skills add jonathanleiva15/out-box-skills`).
 - Contenido coherente con `capabilities.clients.skill` del back (`out-box`): la skill
   es el mirror de la documentacion de cliente de la API REST de Outbox.

@@ -1,6 +1,6 @@
 ---
 name: outbox-publish
-version: 1.3.0
+version: 1.4.0
 description: >-
   Publica, lee, actualiza y gestiona paginas (HTMLs) en Outbox (out-box.dev) —
   la biblioteca privada en linea agents-first del usuario, via la API REST con
@@ -10,9 +10,10 @@ description: >-
   Outbox", "manda a out-box.dev", "que tengo en notas de hoy", "actualiza mi
   briefing", "lee mi Outbox y agregale X", "armame el link de Outbox", "que
   publique", "borra X de Outbox", emitir API keys para agentes, configurar el
-  brand preset / template, cambiar visibility, generar share links o grants, o
-  cualquier referencia a leer/escribir/gestionar contenido publicado en su
-  espacio personal.
+  brand preset / template, cambiar visibility, generar share links o grants,
+  gestionar teams/empresas (crear un org, agregar miembros, mintear company keys,
+  publicar bajo el handle de una empresa), o cualquier referencia a
+  leer/escribir/gestionar contenido publicado en su espacio personal o de equipo.
 ---
 
 # Outbox — publicar y gestionar paginas via API
@@ -73,9 +74,11 @@ Las tres usan la **misma API key** y el **mismo backend**.
   En entornos cloud/headless tambien se pasa por `OUTBOX_API_KEY`. La key se
   hashea server-side y resuelve a un `Principal { user, scopes }`.
 - **El `user` NUNCA se pasa en el body.** El backend siempre escribe en el
-  namespace del dueno de la key; cualquier `user`/`owner` en el body se **ignora**.
+  namespace del dueno de la key; cualquier `user` en el body se **ignora**.
   En los paths `/api/u/<user>/...` el `<user>` debe ser el dueno de la key
-  (cross-user → 403).
+  (cross-user → 403). **Excepcion Teams F1**: `POST /publish` acepta `body.owner`
+  con el handle de un ORG del que sos miembro (o una company key del org) para
+  publicar bajo ese namespace — ver flujo 17.
 - **Content-Type**: `application/json`, salvo `PUT /api/template` (`text/html`) y
   `POST /api/uploads` (multipart o `image/*` crudo).
 - **CORS/CSRF**: como agente con Bearer no necesitas `X-Requested-With` (el CSRF
@@ -559,12 +562,69 @@ texto anclado `anchor.exact` por `replacement`).
 
 Via MCP: `outbox_read_comments`, `outbox_create_suggestion`, `outbox_accept_suggestion`, `outbox_discard_suggestion`.
 
+### 17. Teams / Orgs — publicar bajo el namespace de una empresa (Teams F1)
+
+Outbox soporta **empresas** (orgs): un namespace de equipo bajo el cual varios actores
+publican. `out-box.dev/<handle-org>/<slug>` funciona igual que el de una persona, pero
+el handle pertenece a una **empresa**, no a un individuo.
+
+**Modelo: una empresa es un `UserRecord{ type:'org', ownerUser }`** en el MISMO keyspace
+de handles que las personas (el handle de un org no puede chocar con el de una persona).
+Hay **3 actores** que pueden operar sobre el namespace del org:
+
+| Actor | Como se autentica | Como publica bajo el org |
+|---|---|---|
+| **Humano (miembro)** | su propia sesion/key personal + ser miembro del org | `POST /publish` con `body.owner: "<handle-org>"` |
+| **Agente (company key)** | una **company key** del org (`KeyRecord.user = handle`) | `POST /publish` **sin** `owner` — su namespace propio YA es el del org |
+| **Cliente (tercero)** | share link (`?share=`) o grant user-to-user | no publica; solo LEE/comenta recursos del org (flujo 11) |
+
+Solo el **owner** del org (el creador, miembro 0) administra membership y mintea
+company keys. El owner siempre es miembro y no se puede remover.
+
+**Endpoints (todos requireAuth; el `user` sale del principal, nunca del body):**
+
+- **Crear org**: `POST /api/teams` `{ "handle", "name"? }` — scope `admin:self` (solo
+  una sesion humana; una company key jamas tiene `admin:self`). `handle` canonico
+  `[a-z0-9-]{2,32}`. Colision → `409 handle_taken`. Cap por creador: free=1, pago=25
+  (`403 org_limit`). → `201 { handle, name, ownerUser, createdAt }`.
+- **Listar mis orgs**: `GET /api/teams` → `{ teams: [{ handle, name, role, addedAt }] }`
+  (`role` = `owner` | `member`).
+- **Roster**: `GET /api/teams/<handle>/members` (debe ser miembro) →
+  `{ handle, members: [{ user, role, addedAt, addedBy }] }`.
+- **Agregar miembro** (owner): `POST /api/teams/<handle>/members` `{ "user", "role"? }`.
+  `user` = handle de una **persona** existente (`400 cannot_add_org` si es un org).
+  F1 solo acepta `role:"member"`. Idempotente.
+- **Quitar miembro** (owner): `DELETE /api/teams/<handle>/members/<user>`. No se puede
+  remover al owner (`400 cannot_remove_owner`). Las company keys del org NO se tocan.
+- **Mintear company key** (owner): `POST /api/teams/<handle>/keys` — mismo body/shape
+  que `POST /api/keys/agent` (`label`, `folder?`, `days?`, `verbs?`). La key resultante
+  tiene `KeyRecord.user = handle`, scopes `verb:<handle>[:f/...]`, cuenta contra el
+  `agentKeysMax` del **tier del org**. NO tiene `admin:self`: no puede mintear mas keys
+  ni administrar membership.
+
+**Las 2 formas de publish-as-team:**
+
+1. **Humano/sesion → con `owner`**: el principal es miembro del org y manda
+   `POST /publish { ..., "owner": "<handle-org>", "model": "..." }`. La pagina queda
+   bajo `out-box.dev/<handle-org>/<slug>`. Si no sos miembro → `403`. Una agent key
+   personal NO escala a un org ajeno (solo sesion humana miembro, o company key).
+2. **Agente → con company key, automatico**: publicas con la company key del org
+   **sin** `owner`. Tu namespace propio ya es el del org. Es el camino recomendado
+   para una flota de agentes que publican bajo la empresa con blast radius acotado
+   (la company key puede ser folder-scoped y con expiracion, como cualquier agent key).
+
+> Quota, tier y limites de tamaño en un publish-as-team son los del **namespace
+> destino** (el org tiene su propio `UserRecord`/tier), no los del principal.
+
+> Referencia endpoint por endpoint: seccion "Teams / Orgs" en `references/api-reference.md`.
+
 ---
 
 ## Reglas y gotchas operativos
 
-1. **Nunca mandes `user`/`owner` en el body** — se ignora; el backend usa el dueno
-   de la key.
+1. **Nunca mandes `user` en el body** — se ignora; el backend usa el dueno de la
+   key. (Excepcion: `owner` en `POST /publish` es el publish-as-team de Teams F1,
+   flujo 17 — solo handle de ORG, gateado por membership/company key.)
 2. **`model` es obligatorio** en publish y publish-from-template (`400 missing_model`).
    **`summary`** conviene mandarlo (hay fallback no-IA si falta).
 3. **Nunca mandes `publishedByLabel`** — read-only, auto-derivado de `key.label`.

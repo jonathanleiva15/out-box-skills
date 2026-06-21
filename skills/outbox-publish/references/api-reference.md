@@ -130,6 +130,7 @@ Body:
   "title": "Titulo",                   // opcional
   "tags": ["a", "b"],                  // opcional
   "visibility": "private",             // opcional: private(DEFAULT) | unlisted | public
+  "owner": "procontacto",              // opcional (Teams F1): publica bajo el namespace de un ORG. omitido = namespace propio. canonico, sino 400 invalid_owner. requiere ser miembro (sesion) o company key del org
   "inheritFolderVisibility": false,    // opcional (B2): opt-in herencia de folder. default false
   "ttl": "24h",                        // opcional (B10): <int><s|m|h|d|w>, max 1 ano. degrada a private (solo no-private)
   "branding": "full",                  // opcional: "full" aplica template per-user | "none" HTML crudo
@@ -159,7 +160,16 @@ Notas:
 - Re-publicar al **mismo slug** crea una nueva version (`appendVersion`), no borra.
 - **Visibility default = `private`** salvo body explicito. La herencia del folder
   solo aplica con `inheritFolderVisibility: true` (recorre el ancestro mas cercano).
-- `model` faltante → `400 missing_model`. `user`/`owner` en body se ignoran.
+- `model` faltante → `400 missing_model`. `user` en body se ignora siempre.
+- **Teams F1 — `owner`**: si mandas `owner` con el handle de un ORG, la pagina se
+  publica bajo el namespace del org (no el tuyo). Requiere autorizacion: o sos
+  **miembro** del org (sesion humana) o usas una **company key** del org. Una agent
+  key personal NO escala a un org ajeno. Sin `owner` (o `owner` == tu user) =
+  comportamiento historico, cero cambios. Handle no-canonico → `400 invalid_owner`;
+  sin permiso bajo el namespace → `403`. Quota/tier/limites de tamaño son los del
+  **namespace destino** (el org tiene su propio tier). Para una company key el
+  "publish-as-team" es automatico: su namespace propio YA es el del org, no mandes
+  `owner`.
 
 Errores de `/publish`:
 
@@ -845,3 +855,87 @@ tras un `409 anchor_not_found`). Errores: `409 comment_not_open` (ya cerrado),
 
 ### DELETE /api/u/&lt;user&gt;/&lt;slug&gt;
 Borra una pagina. **Scope** `delete:u`. Cross-user → `403`. No recuperable via API.
+
+---
+
+## Teams / Orgs (Teams F1)
+
+Una **empresa** (org) es un `UserRecord{ type:'org', ownerUser }` que vive en el
+**mismo keyspace de handles** que las personas (colision de handles gratis: el handle
+de un org no puede chocar con el de una persona). Las paginas del org cuelgan de su
+namespace igual que las de una persona: `out-box.dev/<handle>/<slug>`.
+
+**Modelo de 3 actores sobre un org:**
+- **Humano → miembro** (membership con `grant`): el owner agrega personas; cada una
+  publica bajo el namespace del org con su sesion (`body.owner` en `/publish`).
+- **Agente → company key** folder-scoped (`KeyRecord.user = handle`): una key del org
+  que publica bajo el namespace del org **sin** mandar `owner` (es automatico).
+- **Cliente → share link / grant**: terceros sin cuenta via `?share=<token>`, o con
+  cuenta via grant — los mismos mecanismos del flujo "Compartir", apuntando a recursos
+  del namespace del org.
+
+Todos los endpoints de teams son **requireAuth**. El `user` SALE del principal, NUNCA
+del body/query. Mutaciones por sesion-browser exigen CSRF (Bearer no).
+
+### POST /api/teams
+Crea un org (el creador queda como **owner** = miembro 0). **Scope** `admin:self`
+(solo una sesion humana con namespace propio; una company key jamas tiene `admin:self`).
+```json
+{ "handle": "procontacto", "name": "ProContacto" }
+```
+- `handle`: canonico `[a-z0-9-]{2,32}` (misma regla que username) — sino `400 invalid_handle`.
+- `name`: opcional, ≤ 80 chars (`400 invalid_name`).
+- Colision con persona/org/reservado → `409 handle_taken` (mismo keyspace).
+- Cap de orgs por creador: **free = 1**, tier pago = 25 → `403 org_limit`.
+- El creador no puede ser un org → `403 creator_not_user`.
+
+Respuesta `201`: `{ handle, name, ownerUser, createdAt }` (`name` = `null` si no se dio).
+
+### GET /api/teams
+Lista los orgs de los que el principal es miembro (cualquier rol). **requireAuth**.
+Respuesta: `{ teams: [{ handle, name, role, addedAt }] }` (`role` = `owner` | `member`).
+
+### GET /api/teams/&lt;handle&gt;/members
+Roster del org. **requireAuth** + el principal debe ser **miembro** (cualquier rol;
+`403 not_a_member` si no). Org inexistente → `404 team_not_found`.
+Respuesta: `{ handle, members: [{ user, role, addedAt, addedBy }] }`.
+
+### POST /api/teams/&lt;handle&gt;/members
+El **owner** agrega un miembro. **requireAuth** + actor-admin (sesion humana o
+`admin:self`) + `isOwner` (`403 not_owner`).
+```json
+{ "user": "santy", "role": "member" }
+```
+- `user`: handle canonico de una **persona** existente (`400 invalid_user`,
+  `404 user_not_found`, `400 cannot_add_org` si apunta a un org).
+- `role`: F1 solo acepta `"member"` (o ausente). Otro valor → `400 invalid_role`.
+  (el unico owner es `ownerUser`; no se otorga `owner` por aca).
+- Idempotente: si ya es miembro → `200` sin duplicar ni degradar su rol.
+
+Respuesta: `{ ok: true, user, role }`.
+
+### DELETE /api/teams/&lt;handle&gt;/members/&lt;user&gt;
+El **owner** quita un miembro. **requireAuth** + actor-admin + `isOwner`.
+- No se puede remover al `ownerUser` → `400 cannot_remove_owner`.
+- Idempotente: `200` aunque ya no fuera miembro. Las **company keys del org NO se
+  tocan** (son del org, no del ex-miembro).
+
+Respuesta: `{ ok: true, removed: <user> }`.
+
+### POST /api/teams/&lt;handle&gt;/keys
+El **owner** mintea una **company key** (key del org). **requireAuth** + actor-admin
++ `isOwner`. Reusa el flujo de `POST /api/keys/agent` pero con `KeyRecord.user = handle`:
+```json
+{ "label": "agente-org", "folder": "briefings", "days": 30, "verbs": ["publish", "list"] }
+```
+- Mismo body/shape que `POST /api/keys/agent` (ver "API keys"): `folder` opcional
+  (con folder → blast radius acotado; sin folder → BROAD sobre el namespace del org),
+  `days` (0 = nunca expira), `verbs` default `["publish"]`.
+- La key resultante: scopes `verb:<handle>[:f/...]`, indexada en `keys-by-user:<handle>`,
+  cuenta contra `agentKeysMax` del **tier del org**.
+- Una company key publica bajo el org **sin** mandar `body.owner` (su namespace propio
+  ya es el del org). NO tiene `admin:self`: jamas puede mintear otras company keys ni
+  administrar membership.
+
+Respuesta: igual que `POST /api/keys/agent`
+(`{ plaintext, keyId, label, type, scopes, rateLimits, expiresAt, folder, days, ... }`).
