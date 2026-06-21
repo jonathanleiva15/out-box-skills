@@ -1,6 +1,6 @@
 ---
 name: outbox-publish
-version: 1.4.0
+version: 1.5.0
 description: >-
   Publica, lee, actualiza y gestiona paginas (HTMLs) en Outbox (out-box.dev) —
   la biblioteca privada en linea agents-first del usuario, via la API REST con
@@ -11,7 +11,9 @@ description: >-
   briefing", "lee mi Outbox y agregale X", "armame el link de Outbox", "que
   publique", "borra X de Outbox", emitir API keys para agentes, configurar el
   brand preset / template, cambiar visibility, generar share links o grants,
-  gestionar teams/empresas (crear un org, agregar miembros, mintear company keys,
+  gestionar teams/empresas (crear un org, agregar/quitar miembros, delegar gestion
+  de keys, mintear/revocar company keys, transferir o borrar un org, plantilla de
+  marca del org, billing del org, dominio propio, ver acceso efectivo/inverso,
   publicar bajo el handle de una empresa), o cualquier referencia a
   leer/escribir/gestionar contenido publicado en su espacio personal o de equipo.
 ---
@@ -562,11 +564,14 @@ texto anclado `anchor.exact` por `replacement`).
 
 Via MCP: `outbox_read_comments`, `outbox_create_suggestion`, `outbox_accept_suggestion`, `outbox_discard_suggestion`.
 
-### 17. Teams / Orgs — publicar bajo el namespace de una empresa (Teams F1)
+### 17. Teams / Orgs — publicar y administrar bajo el namespace de una empresa (Teams v2)
 
 Outbox soporta **empresas** (orgs): un namespace de equipo bajo el cual varios actores
 publican. `out-box.dev/<handle-org>/<slug>` funciona igual que el de una persona, pero
-el handle pertenece a una **empresa**, no a un individuo.
+el handle pertenece a una **empresa**, no a un individuo. Teams v2 suma sobre F1:
+delegacion de gestion de keys (`canManageKeys`), revocacion de company keys, vistas de
+acceso efectivo/inverso, transferencia y borrado de org, plantilla de marca del org,
+verificacion de dominio, y (diferido / early access) dominio propio y billing del org.
 
 **Modelo: una empresa es un `UserRecord{ type:'org', ownerUser }`** en el MISMO keyspace
 de handles que las personas (el handle de un org no puede chocar con el de una persona).
@@ -578,10 +583,12 @@ Hay **3 actores** que pueden operar sobre el namespace del org:
 | **Agente (company key)** | una **company key** del org (`KeyRecord.user = handle`) | `POST /publish` **sin** `owner` — su namespace propio YA es el del org |
 | **Cliente (tercero)** | share link (`?share=`) o grant user-to-user | no publica; solo LEE/comenta recursos del org (flujo 11) |
 
-Solo el **owner** del org (el creador, miembro 0) administra membership y mintea
-company keys. El owner siempre es miembro y no se puede remover.
+El **owner** del org (el creador, miembro 0) administra membership, transfiere o borra
+el org, y gobierna marca/dominio/billing. El owner siempre es miembro y no se puede
+remover. En Teams v2 el owner puede **delegar** la gestion de company keys a miembros
+puntuales (flag `canManageKeys`), sin cederles la administracion del org.
 
-**Endpoints (todos requireAuth; el `user` sale del principal, nunca del body):**
+**Endpoints base (membership + keys) — todos requireAuth; el `user` sale del principal, nunca del body:**
 
 - **Crear org**: `POST /api/teams` `{ "handle", "name"? }` — scope `admin:self` (solo
   una sesion humana; una company key jamas tiene `admin:self`). `handle` canonico
@@ -593,14 +600,114 @@ company keys. El owner siempre es miembro y no se puede remover.
   `{ handle, members: [{ user, role, addedAt, addedBy }] }`.
 - **Agregar miembro** (owner): `POST /api/teams/<handle>/members` `{ "user", "role"? }`.
   `user` = handle de una **persona** existente (`400 cannot_add_org` si es un org).
-  F1 solo acepta `role:"member"`. Idempotente.
+  Solo acepta `role:"member"`. Idempotente.
 - **Quitar miembro** (owner): `DELETE /api/teams/<handle>/members/<user>`. No se puede
   remover al owner (`400 cannot_remove_owner`). Las company keys del org NO se tocan.
-- **Mintear company key** (owner): `POST /api/teams/<handle>/keys` — mismo body/shape
-  que `POST /api/keys/agent` (`label`, `folder?`, `days?`, `verbs?`). La key resultante
-  tiene `KeyRecord.user = handle`, scopes `verb:<handle>[:f/...]`, cuenta contra el
-  `agentKeysMax` del **tier del org**. NO tiene `admin:self`: no puede mintear mas keys
-  ni administrar membership.
+- **Delegar gestion de keys** (owner, v2): `PATCH /api/teams/<handle>/members/<user>`
+  `{ "canManageKeys": true|false }`. Otorga/quita a UN miembro la capacidad de
+  emitir/revocar company keys de SUS proyectos — **ortogonal** al acceso por proyecto.
+  No se puede setear sobre el owner (`400 cannot_modify_owner`, siempre puede). No-miembro
+  → `404 not_a_member`. → `{ ok, user, canManageKeys }`.
+- **Mintear company key** (owner **o** miembro con `canManageKeys`, v2):
+  `POST /api/teams/<handle>/keys` — mismo body/shape que `POST /api/keys/agent`
+  (`label`, `folder?`, `days?`, `verbs?`). El owner mintea con scope full; un miembro con
+  `canManageKeys` mintea **acotado a sus proyectos** (un scope fuera de su acceso →
+  `403 scope_escalation`). Miembro sin la capacidad → `403 cannot_manage_keys`; no-miembro
+  → `403 not_a_member`. La key resultante tiene `KeyRecord.user = handle`, scopes
+  `verb:<handle>[:f/...]`, cuenta contra el `agentKeysMax` del **tier del org**. NO tiene
+  `admin:self`: no puede mintear mas keys ni administrar membership.
+- **Revocar company key** (owner cualquiera; miembro con `canManageKeys` solo las que ÉL
+  minteo, v2): `DELETE /api/teams/<handle>/keys/<keyId>`. `keyId` = el short id (8 hex) de
+  la company key. Miembro intentando revocar una key ajena → `403 not_your_key`. Ya
+  revocada → `409 key_already_revoked`; inexistente → `404 key_not_found`; si el short
+  id (8 hex) matchea mas de una key → `409 ambiguous_key_id` (usá un id mas largo). →
+  `{ ok, keyId, revokedAt }`.
+
+**Acceso efectivo / inverso (v2) — visibilidad de grupos→proyectos→permisos:**
+
+- **Acceso efectivo de una persona**: `GET /api/teams/<handle>/members/<user>/access` →
+  `{ handle, user, role, groups[], allAccess, projects[], canManageKeys }`. Resuelve QUÉ
+  proyectos toca esa persona via sus grupos. El **owner** ve el de cualquiera; un miembro
+  no-owner SOLO el suyo (`403 forbidden` si pide el de otro). `allAccess: true` = acceso
+  total (owner / miembro legacy en org sin grupos), con `projects` vacio.
+- **Acceso inverso de un proyecto**: `GET /api/teams/<handle>/projects/<prefix>/access` →
+  `{ handle, project, groups[], members[], keys[] }`. El inverso: dado un proyecto (folder
+  prefix), qué grupos lo habilitan, qué miembros lo tocan y qué company keys tienen scope
+  sobre él. El owner siempre; un miembro no-owner solo si ese proyecto cae en SU acceso
+  efectivo (`403 forbidden` si no).
+
+> **GAP de grupos (v2 — pendiente).** Los **grupos/equipos** (el mapeo grupo→proyectos y
+> grupo→miembros que arma `groups[]`/`members[]` en los dos endpoints de acceso) **todavia
+> NO tienen endpoints REST**: se pueden **LEER** via los `*/access` de arriba, pero NO se
+> **crean/editan/borran** por API. Crear o ajustar un grupo es por ahora una operacion
+> interna/manual del back. Si el usuario quiere armar grupos por API, avisale que esa capa
+> esta diferida.
+
+**Acciones DANGER (v2) — owner-only, gating maximo (CSRF + actor-admin + `isOwner`):**
+
+- **Transferir ownership**: `POST /api/teams/<handle>/transfer` `{ "toUser": "<handle>" }`.
+  Pasa la propiedad del org a OTRO miembro existente. El destino DEBE ser miembro
+  (`404 target_not_member`), no puede ser el owner actual (`400 already_owner`), handle
+  no-canonico → `400 invalid_to_user`. Tras transferir, el viejo owner queda como `member`.
+  → `{ ok, handle, ownerUser, previousOwner, transferredAt }`. **Confirmá con el usuario**:
+  perdés el control del org.
+- **Borrar el org entero**: `DELETE /api/teams/<handle>` `{ "confirm": "<handle>" }`. La
+  accion mas destructiva. El `confirm` del body DEBE matchear el `handle` EXACTO
+  (`400 confirm_mismatch`). Revoca todas las company keys, purga membership + grupos, borra
+  la plantilla del org y libera el handle. **El contenido R2 publicado bajo el org NO se
+  borra** (queda huerfano, servible por URL exacta; limpiarlo es un flujo aparte). →
+  `{ ok, deleted, deletedAt, cleaned: { members, groups, keysRevoked }, contentR2: "kept" }`.
+  **Confirmá SIEMPRE con el usuario** antes de llamar esto.
+
+**Plantilla de marca del org (v2):** una empresa puede tener su PROPIA plantilla wrapper
+(distinta de la personal). Los miembros que publican bajo `<handle>` HEREDAN esta plantilla.
+
+- **Ver**: `GET /api/teams/<handle>/template` (cualquier miembro) → `text/html`, o
+  `{ template: null, hasTemplate: false }` si no hay.
+- **Setear** (owner): `PUT /api/teams/<handle>/template`, **Content-Type `text/html`**,
+  body = el HTML. Debe contener `{{content}}` (`400 missing_content_placeholder`). Max 1MB
+  (`413 template_too_large`); body vacio → `400 empty_template`. → `{ ok, size }`.
+- **Borrar** (owner): `DELETE /api/teams/<handle>/template` → `{ ok, deleted: true }`.
+
+**Verificacion de dominio por DNS TXT (v2):** una empresa prueba que controla un dominio
+publicando un TXT con un token. Flujo de dos pasos, owner-only (GET para cualquier miembro):
+
+- **Estado**: `GET /api/teams/<handle>/verify-domain` →
+  `{ handle, verified, verifiedDomain, verifiedVia, pending }` (`pending` trae el TXT a
+  publicar si hay una verificacion en curso).
+- **Iniciar**: `POST /api/teams/<handle>/verify-domain/start` `{ "domain": "empresa.com" }`
+  → `{ ok, domain, record: { name, type:"TXT", value }, prefix }`. Publicá ese TXT en el DNS.
+- **Confirmar**: `POST /api/teams/<handle>/verify-domain/confirm` (sin body) → resuelve el
+  DNS; si matchea, marca `verified: true`. Si todavia no propago → `200 { ok:false,
+  verified:false, error:"txt_not_found" }` (reintentá). Sin verificacion en curso →
+  `409 no_pending_verification`; fallo de DNS → `502 dns_lookup_failed`.
+
+**⚠️ Dominio propio (v2 — DIFERIDO):** mapear un dominio verificado para servir el
+namespace del org bajo `propuestas.empresa.com`.
+
+- `GET /api/teams/<handle>/domains` (lista, cualquier miembro) ya funciona.
+- `POST /api/teams/<handle>/domains` `{ "domain" }` (owner) hoy responde
+  **`503 domain_unconfigured`**: el binding KV de dominios NO esta creado todavia (config
+  humana pendiente). Cuando se habilite, exigirá un dominio ya **verificado** que CUBRA el
+  pedido (`409 domain_not_verified` / `403 domain_not_covered`), evita secuestro
+  (`409 domain_taken`) y deja pendiente el cert TLS en Cloudflare (config externa).
+- `DELETE /api/teams/<handle>/domains/<domain>` (owner) desmapea. **No lo ofrezcas como
+  capacidad activa**: avisale al usuario que dominio-propio esta diferido.
+
+**⚠️ Billing del org (v2 — EARLY ACCESS):** cada org es facturable (anti-sprawl); la
+subscripción se asocia al `UserRecord`-org, no a la persona.
+
+- **Estado**: `GET /api/teams/<handle>/billing` (cualquier miembro) →
+  `{ handle, tier, purchasedTier, active, subscriptionStatus, billingCycle,
+  currentPeriodEnd, billingProvider, billingEnabled }`. `billingEnabled` indica si el
+  billing de orgs esta habilitado en este entorno.
+- **Checkout** (owner): `POST /api/teams/<handle>/billing/checkout` `{ "cycle": "monthly"|"annual" }`.
+  Hoy puede dar **`503 team_early_access`** (los variants TEAM de Lemon Squeezy + el flag
+  aun no estan) o **`503 billing_unconfigured`** (faltan credenciales/variant). Si ya hay
+  plan activo → `409 already_subscribed`. → `{ checkoutUrl }`.
+- **Portal** (owner): `GET /api/teams/<handle>/billing/portal` → `{ portalUrl }`; sin plan
+  → `404 no_subscription`. **Tratalo como early access**: si da `503`, decile al usuario
+  que el plan de equipo esta en early access (hola@out-box.dev).
 
 **Las 2 formas de publish-as-team:**
 
