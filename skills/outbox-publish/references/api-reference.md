@@ -19,7 +19,7 @@ del org, billing del org). Fecha: 2026-06-21.
 ## Convenciones globales
 
 - El `user` del path `/api/u/<user>/...` debe ser el dueno de la key. Cross-user → `403`.
-- El `user`/`owner` en el body se ignora; el path R2 sale del `Principal`.
+- El `user` en el body se ignora; el path R2 sale del `Principal`. **Excepción:** en `POST /publish`, `body.owner` con el handle de un ORG publica bajo el namespace del org (Teams F1 publish-as-team; requiere membresía o company key). Ver la sección `/publish`.
 - `publishedByLabel` es read-only (auto-derivado de `key.label`). No enviarlo.
 - `model` es OBLIGATORIO en publish/publish-from-template (`400 missing_model`).
 - Errores: JSON `{ "error": "<code>" }` (+ campos extra segun caso).
