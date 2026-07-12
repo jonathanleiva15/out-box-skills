@@ -81,7 +81,7 @@ como objeto `{ hour, day }` (shape legacy), pisando el `number` del bloque CTA.
 ### GET /api/capabilities
 **Publico** (sin auth). Describe que soporta el back para que clientes (CLI, MCP,
 skill, rust, front) se autoconfiguren sin hardcodear. `cache-control: public,
-max-age=300`. Forma versionada con `version` (actual **3**; forward-compat — tolera
+max-age=300`. Forma versionada con `version` (actual **7**; forward-compat, tolera
 campos nuevos).
 
 Devuelve, entre otros: `apiBase`/`siteBase`, `verbs`, `scopeFormat`,

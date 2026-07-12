@@ -58,7 +58,7 @@ ellas. Mencionalas si al usuario le conviene otra:
   `outbox export`, etc.). Lee la key de `~/.outboxrc`.
 - **Skill** `outbox-publish` (esta) — para agentes con skills: haces los requests
   HTTP que se describen aca.
-- **MCP** (`@out-box/mcp`, **40 tools**) — server MCP local (stdio) para clientes
+- **MCP** (`@out-box/mcp`, **59 tools**) — server MCP local (stdio) para clientes
   MCP (Claude Desktop, Cursor). Se lanza con `npx -y @out-box/mcp` y autentica con
   `OUTBOX_API_KEY` o `~/.outboxrc`. Tools tipo `outbox_publish`, `outbox_read`,
   `outbox_export`, `outbox_capabilities`, etc.
@@ -113,7 +113,7 @@ Las tres usan la **misma API key** y el **mismo backend**.
 y `scopeDefaults`, valores/default de visibility + TTL, limites de content-meta,
 uploads, los 6 brand presets, limites por tier, y que features estan activas.
 Usalo para autoconfigurarte sin hardcodear; el payload se versiona con `version`
-(actual **3**; tolera campos nuevos). En v3 `features` declara `squash: true` y
+(actual **7**; tolera campos nuevos). `features` declara `squash: true` y
 `publicExport: true`, y `endpoints` incluye `squash: "POST
 /api/u/:user/:slug/squash"` y `export: "GET /api/u/:user/:slug/export"` — los
 clientes descubren ambas features sin hardcodear.

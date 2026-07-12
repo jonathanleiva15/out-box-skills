@@ -42,7 +42,7 @@ npx skills add jonathanleiva15/out-box-skills
 
 ## Version
 
-- Skill `outbox-publish`: **1.4.0** (ver `version` en el frontmatter de `SKILL.md` — fuente de verdad).
+- Skill `outbox-publish`: **1.5.0** (ver `version` en el frontmatter de `SKILL.md`, fuente de verdad).
 - El manifest `skills.sh.json` declara el grouping "Outbox" con la skill `outbox-publish`.
 
 ## Las 3 vias de usar Outbox
@@ -51,7 +51,7 @@ Esta skill es una de tres formas equivalentes (misma API key, mismo backend):
 
 - **CLI** (`outbox ...`)
 - **Skill** `outbox-publish` (este repo)
-- **MCP** (`@out-box/mcp`, 40 tools)
+- **MCP** (`@out-box/mcp`, 59 tools)
 
 ## Coherencia con el back
 
