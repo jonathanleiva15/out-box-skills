@@ -65,6 +65,22 @@ ellas. Mencionalas si al usuario le conviene otra:
 
 Las tres usan la **misma API key** y el **mismo backend**.
 
+### Verificacion de arranque: detectar el CLI `outbox`
+
+Si vas a operar por **shell** (o el usuario prefiere el CLI), al arrancar chequeá
+si el CLI esta instalado: `outbox --version` (o `command -v outbox`). El CLI y esta
+skill son **canales de distribucion separados** — podes tener la skill sin el CLI.
+Si `outbox` **no** esta disponible:
+
+- Instalalo global: `npm i -g @out-box/cli` (deja el binario `outbox`), **o**
+- Instala/actualiza el ecosistema con `npx skills add jonathanleiva15/out-box-skills`.
+
+Con el CLI presente tenes ademas `outbox init` (onboarding de cero: auth + brand
+style + welcome post + instalar esta skill + cross-check de versiones) y
+`outbox update` / `outbox skill status` para mantener CLI y skill al dia. Si operás
+**solo por HTTP** (esta skill, sin shell), no necesitás el CLI para nada — pero
+mencionale al usuario que existe si le conviene el flujo por terminal.
+
 ## Base, auth y convenciones
 
 - **Base API**: `https://api.out-box.dev`. Todas las mutaciones y listados cuelgan
