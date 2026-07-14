@@ -619,8 +619,11 @@ puntuales (flag `canManageKeys`), sin cederles la administracion del org.
   Solo acepta `role:"member"`. Idempotente.
 - **Quitar miembro** (owner): `DELETE /api/teams/<handle>/members/<user>`. No se puede
   remover al owner (`400 cannot_remove_owner`). Las company keys del org NO se tocan.
-- **Delegar gestion de keys** (owner, v2): `PATCH /api/teams/<handle>/members/<user>`
-  `{ "canManageKeys": true|false }`. Otorga/quita a UN miembro la capacidad de
+- **Delegar gestion de keys** (owner, v2): `POST (o PATCH) /api/teams/<handle>/members/<user>`
+  `{ "canManageKeys": true|false }`. **Usá `POST`**: el edge de Cloudflare bloquea los
+  PATCH autenticados a `api.out-box.dev` (regla WAF) antes de llegar al worker; el back
+  acepta ambos metodos y POST bypassa el bloqueo (PATCH queda solo por back-compat).
+  Otorga/quita a UN miembro la capacidad de
   emitir/revocar company keys de SUS proyectos — **ortogonal** al acceso por proyecto.
   No se puede setear sobre el owner (`400 cannot_modify_owner`, siempre puede). No-miembro
   → `404 not_a_member`. → `{ ok, user, canManageKeys }`.

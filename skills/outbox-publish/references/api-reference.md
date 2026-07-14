@@ -951,10 +951,15 @@ El **owner** quita un miembro. **requireAuth** + actor-admin + `isOwner`.
 
 Respuesta: `{ ok: true, removed: <user> }`.
 
-### PATCH /api/teams/&lt;handle&gt;/members/&lt;user&gt;
+### POST (o PATCH) /api/teams/&lt;handle&gt;/members/&lt;user&gt;
 **(v2)** El **owner** delega/quita a un miembro la capacidad de gestionar company keys
 (`canManageKeys`). **requireAuth** + actor-admin + `isOwner`. Ortogonal al acceso por
 proyecto (grupos): solo toca la capacidad de emitir/revocar keys, no escala acceso.
+
+> **Usá `POST`.** El edge de Cloudflare bloquea los `PATCH` autenticados a
+> `api.out-box.dev` (regla WAF) antes de llegar al worker. El back acepta ambos
+> metodos y `POST` bypassa el bloqueo; `PATCH` queda solo por back-compat.
+
 ```json
 { "canManageKeys": true }
 ```
