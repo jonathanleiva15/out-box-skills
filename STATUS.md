@@ -1,5 +1,8 @@
 # STATUS.md — out-box-skills
 
+> El estado del ecosistema completo (7 repos, prod, bugs abiertos, drift) vive en
+> `../STATUS.md` (dashboard maestro de `Outboxmain\`, creado 2026-07-18). Acá solo lo local.
+
 ## Estado actual
 
 - Skill **`outbox-publish` 1.5.0** — publicada e instalable via skills.sh
