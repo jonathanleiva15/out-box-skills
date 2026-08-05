@@ -2,9 +2,11 @@
 
 Referencia de los endpoints relevantes para un **agente cliente** que publica,
 lee, actualiza y gestiona paginas con una API key `outbox_*`. Derivada del backend
-real (`out-box/worker/src/handlers` + `worker/src/lib`). Incluye Fase 3A (B1–B15) y
-Teams v2 (membership, delegacion de keys, acceso, transfer/delete, plantilla y dominio
-del org, billing del org). Fecha: 2026-06-21.
+real (`out-box/worker/src/handlers` + `worker/src/lib`). Incluye Fase 3A (B1–B15),
+Teams v2 (membership, delegacion de keys, list/mint/revoke de company keys, grupos de
+acceso a proyecto con CRUD REST, acceso efectivo/inverso, transfer/delete, plantilla y
+dominio del org, billing del org) y la capa de automacion agent-first (event webhooks +
+schedules). Fecha: 2026-07-31.
 
 - **Base API**: `https://api.out-box.dev`
 - **Auth**: `Authorization: Bearer $OUTBOX_API_KEY` (API key long-lived del
@@ -457,6 +459,21 @@ Borra un bloque (`blockId` con prefijo `blk_`). **Scope** `delete:u`. Respuesta:
 `{ remainingBlocks, version }`. Errores: `404 daily_not_found`, `404 block_not_found`,
 `400 invalid_date`, `400 invalid_path`.
 
+### POST /api/dailies/&lt;user&gt;/&lt;slug&gt;/delete
+Borra un daily doc **ENTERO**: todos los bloques (R2) de TODAS las fechas + todos los manifests
+(KV) del slug, y lo saca del set de activos por dia (deja de contar contra `dailyDocsMax`).
+Distinto de `DELETE /api/u/:user/:slug/blocks/:id` (un bloque) y de `DELETE /api/u/:user/:slug`
+(post estatico). **Verbo POST** (no PATCH/DELETE): el front necesita un path distinto del delete
+de post estatico, y el edge WAF de Cloudflare 503ea los `PATCH` autenticados antes del worker.
+
+**Auth**: `requireAuth` + CSRF (no-op para Bearer) + verbo **`delete`** folder-aware bajo el
+namespace del path (owner, company key, o sesion miembro en sus proyectos) — idem
+`dailyBlockDeleteHandler`. Una agent key folder-scoped fuera de su folder →
+`403 slug_not_under_allowed_folder` (con `allowedFolders`).
+
+**Idempotente**: si el daily no existe → `200 { ok: true, deletedManifests: 0, deletedBlocks: 0 }`.
+Exito → `{ ok: true, deletedManifests, deletedBlocks }`. Path invalido → `400 invalid_path`.
+
 ---
 
 ## Listado y busqueda
@@ -860,6 +877,46 @@ Borra una pagina. **Scope** `delete:u`. Cross-user → `403`. No recuperable via
 
 ---
 
+## Automatizacion agent-first (webhooks + schedules)
+
+Dos capas **agent-first**, configurables por API. Ambas: **requireAuth**, scope **`template:u`**,
+y son del owner (cada recurso vive en tu namespace, `user` del principal). Para **pausar/editar**
+(`PATCH`) el back acepta tambien `POST` — mismo bloqueo del edge WAF de Cloudflare a los `PATCH`
+autenticados.
+
+### Event webhooks — `/api/webhooks`
+Registra endpoints HTTPS que Outbox dispara en eventos. Entrega **async** via el cron (`<= 1 min`,
+`drainWebhookQueue`), firmada con un `secret` que se muestra **una sola vez** al crear. Eventos
+soportados (`WEBHOOK_EVENTS`): `comment.created`, `version.created`, `page.published`.
+
+- **POST /api/webhooks** — crear. CSRF + `template:u`. Registrar exige **email verificado** del
+  owner (anti-abuse; OAuth/orgs/legacy sin email NO se gatean). Body `{ url, events[], slugPrefix? }`.
+  → `201 { ok, webhook: { ..., secret } }` (el `secret` solo aca).
+- **GET /api/webhooks** — lista (sin secret, `redactHook`).
+- **GET /api/webhooks/events** — `{ events }` (catalogo).
+- **POST (o PATCH) /api/webhooks/&lt;id&gt;** — `{ paused: boolean }` (pausar/reanudar, no borra)
+  → `{ ok, webhook }`.
+- **DELETE /api/webhooks/&lt;id&gt;** — borrar → `{ ok: true }`.
+- **POST /api/webhooks/&lt;id&gt;/test** — encola un evento de prueba → `{ ok, queued, note }`.
+
+### Schedules — `/api/schedules`
+Un cron que dispara una accion `webhook` (POST/GET a una URL HTTPS) en un `cronExpression`
+(`@hourly`, `@daily`, o campos min/hora[/dom/mes/dow]). Las URLs pasan un filtro **SSRF**
+string-only (rechaza localhost/RFC-1918/link-local/metadata `169.254.169.254`/IPv6 ULA-loopback).
+El runner (`runScheduledTriggers`) **auto-pausa** tras 3 fallos consecutivos; ademas hay pausa
+manual (`paused`).
+
+- **POST /api/schedules** — crear. `template:u`. Body `{ label, cronExpression, timezone?,
+  action: { type: "webhook", url, method?, headers?, bodyTemplate? }, agentKeyId? }`.
+  `cronExpression` invalido / URL no-HTTPS o bloqueada por SSRF → `400` (`invalid_fields`,
+  `webhook_must_be_https`, ...). `agentKeyId` default = el keyId del principal. → `{ ok, schedule }`.
+- **GET /api/schedules** — `{ user, count, schedules }`.
+- **POST (o PATCH) /api/schedules/&lt;id&gt;** — `{ paused: boolean }` → `{ ok, schedule }`;
+  inexistente → `404 not_found`.
+- **DELETE /api/schedules/&lt;id&gt;** — `{ ok, deleted: <id> }`; inexistente → `404 not_found`.
+
+---
+
 ## Teams / Orgs (Teams v2)
 
 Una **empresa** (org) es un `UserRecord{ type:'org', ownerUser }` que vive en el
@@ -868,12 +925,11 @@ de un org no puede chocar con el de una persona). Las paginas del org cuelgan de
 namespace igual que las de una persona: `out-box.dev/<handle>/<slug>`.
 
 > **Estado del feature (v2).** Activos: membership, delegacion de keys (`canManageKeys`),
-> mint/revoke de company keys, vistas de acceso (efectivo/inverso), transfer, delete,
+> list/mint/revoke de company keys, **grupos de acceso a proyecto (CRUD REST completo:
+> `/groups` + `/groups/:gid/members`)**, vistas de acceso (efectivo/inverso), transfer, delete,
 > plantilla del org, verificacion de dominio por DNS TXT. **Diferido**: dominio propio
 > (`POST .../domains` → `503 domain_unconfigured`, falta el binding KV). **Early access**:
 > billing del org (checkout/portal pueden dar `503 team_early_access`/`billing_unconfigured`).
-> **GAP**: los **grupos** (grp:/gm:) NO tienen endpoints REST — solo se LEEN via los
-> `*/access`; no se crean/editan por API todavia.
 
 **Errores transversales de teams** (ademas de los globales):
 
@@ -890,7 +946,11 @@ namespace igual que las de una persona: `out-box.dev/<handle>/<slug>`.
 | 400 | `cannot_remove_owner` | se intenta quitar al `ownerUser` |
 | 400 | `cannot_modify_owner` | se intenta setear `canManageKeys` sobre el owner |
 | 404 | `target_not_member` | el destino de un transfer no es miembro del org |
-| 403 | `cannot_manage_keys` | miembro sin `canManageKeys` intenta mintear/revocar company keys |
+| 403 | `cannot_manage_keys` | miembro sin `canManageKeys` intenta listar/mintear/revocar company keys |
+| 400 | `invalid_group_id` | `<gid>` del path no valido (endpoints de grupos) |
+| 404 | `group_not_found` | el grupo no existe en el org |
+| 400 | `invalid_name` | `name` de grupo/org ausente/vacio o > 80 chars |
+| 400 | `invalid_projects` | `projects` de un grupo no es array valido de folder segments / > 100 |
 | 503 | `domain_unconfigured` | `POST .../domains` con el feature dominio-propio diferido (binding KV ausente) |
 | 503 | `team_early_access` / `billing_unconfigured` | checkout del org con billing de orgs aun no habilitado |
 
@@ -998,9 +1058,87 @@ cae en su acceso efectivo (`403 forbidden`). `prefix` no canonico → `400 inval
 }
 ```
 
-> **GAP de grupos.** `groups[]`/`members[]` de estos dos endpoints se LEEN, pero los
-> grupos (grp:/gm:) **NO tienen endpoints REST** para crear/editar/borrar todavia. Esa
-> capa esta diferida; por ahora un grupo se administra internamente en el back.
+### Grupos de acceso a proyecto — CRUD REST (v2)
+
+Un **grupo** (`grp:`/`gm:`) mapea un set de **proyectos** (folder prefixes del namespace del
+org) a un set de **miembros**. Es la capa que alimenta los `groups[]`/`members[]` de los dos
+endpoints de acceso de arriba. **7 endpoints**, todos requireAuth. **Lecturas (GET) = cualquier
+miembro**; **mutaciones = owner-only** (CSRF + actor-admin + `isOwner`: una company key NUNCA
+administra grupos). El `<gid>` se valida con `isValidGroupId` (`400 invalid_group_id`); grupo
+inexistente → `404 group_not_found`. La persistencia vive en `lib/teams.ts` (`createGroup`,
+`setGroupProjects`, `addGroupMember`, ...); el handler es solo el shell HTTP (routing + guards +
+audit). Suite: `test/teams-groups-rest.test.ts`.
+
+#### GET /api/teams/&lt;handle&gt;/groups
+Lista los grupos del org (cualquier miembro; `403 not_a_member` si no).
+Respuesta: `{ groups: [{ id, name, projects: [] }] }`.
+
+#### POST /api/teams/&lt;handle&gt;/groups
+Crea un grupo (owner-only). El `id` lo genera el server (hex de 16), NO el body.
+```jsonc
+{ "name": "Ventas", "projects": ["propuestas", "clientes"] }   // projects opcional (default [])
+```
+- `name`: requerido, no vacio, ≤ 80 chars → `400 invalid_name`.
+- `projects`: array de folder segments validos (mismo `isValidFolderSegment` que los scopes),
+  ≤ 100 → `400 invalid_projects`.
+
+Respuesta `201`: `{ group: { id, name, projects: [] } }`.
+
+#### POST (o PATCH) /api/teams/&lt;handle&gt;/groups/&lt;gid&gt;
+Edita `name` y/o `projects` de un grupo (owner-only). Ambos opcionales (RMW: lo ausente se
+conserva). Preserva `createdAt`/`createdBy`/`canGrantScope` del record existente.
+
+> **Usá `POST`.** El edge de Cloudflare bloquea los `PATCH` autenticados a `api.out-box.dev`
+> (regla WAF) antes del worker; el back acepta ambos y `POST` bypassa el bloqueo. Ojo: el `POST`
+> de **crear** vive en la ruta padre `/groups`; el `POST` sobre `/groups/<gid>` **edita** (rutas
+> distintas por longitud de path).
+
+```jsonc
+{ "name": "Ventas LATAM", "projects": ["propuestas"] }
+```
+Mismos `400 invalid_name` / `400 invalid_projects`. Respuesta: `{ group: { id, name, projects: [] } }`.
+
+#### DELETE /api/teams/&lt;handle&gt;/groups/&lt;gid&gt;
+Borra el grupo + todos sus bindings de miembros (`gm:`). Owner-only. Idempotente.
+Respuesta: `{ ok: true, deleted: <gid> }`.
+
+#### GET /api/teams/&lt;handle&gt;/groups/&lt;gid&gt;/members
+Roster del grupo (cualquier miembro del org). Respuesta: `{ members: [<user>, ...] }`
+(solo los usernames).
+
+#### POST /api/teams/&lt;handle&gt;/groups/&lt;gid&gt;/members
+Agrega un miembro al grupo (owner-only). El `user` DEBE ser miembro del org
+(`404 not_a_member` con `{ user }` si no). Idempotente (re-add no duplica).
+```json
+{ "user": "santy" }
+```
+`user` no canonico → `400 invalid_user`. Respuesta: `{ ok: true, user }`.
+
+#### DELETE /api/teams/&lt;handle&gt;/groups/&lt;gid&gt;/members/&lt;user&gt;
+Quita un miembro del grupo (owner-only). Idempotente (`200` aunque ya no estuviera).
+`user` no canonico → `400 invalid_user`. Respuesta: `{ ok: true, removed: <user> }`.
+
+### GET /api/teams/&lt;handle&gt;/keys
+Lista las company keys del org. **requireAuth**. Membership-gated con el mismo criterio que
+mint/revoke: el principal debe poder GESTIONAR keys (**owner** o **miembro con `canManageKeys`**).
+Un miembro sin la capacidad NO ve el inventario → `403 cannot_manage_keys`; no-miembro →
+`403 not_a_member`. Reusa el indice `keys-by-user:<handle>` (sin scan global).
+```jsonc
+{
+  "handle",
+  "count": 2,
+  "keys": [{
+    "id": "<8 hex>",           // short keyId (el que consume DELETE .../keys/<keyId>)
+    "label": "agente-org",
+    "folder": ["briefings"],   // proyectos que la key toca; null si ALL_ACCESS (todo el org)
+    "verbs": ["list", "publish"],  // verbos distintos de sus scopes bajo este org
+    "createdAt": "<ISO>",
+    "expiresAt": "<ISO|null>",
+    "revoked": false
+  }]
+}
+```
+Ordenada por `createdAt` descendente. Incluye las revocadas (`revoked: true`).
 
 ### POST /api/teams/&lt;handle&gt;/keys
 Mintea una **company key** (key del org). **requireAuth** + actor-admin. En v2 NO es

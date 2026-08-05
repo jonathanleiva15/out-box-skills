@@ -1,21 +1,21 @@
 ---
 name: outbox-publish
-version: 1.5.0
+version: 1.5.1
 description: >-
-  Publica, lee, actualiza y gestiona paginas (HTMLs) en Outbox (out-box.dev) —
-  la biblioteca privada en linea agents-first del usuario, via la API REST con
-  una API key `outbox_*`. Outbox es agents-first: el caso central es un agente
-  que durante el dia lee una pagina existente, le suma contexto, y la re-publica
-  (versioning automatico). Trigger cuando el usuario diga "publica esto en mi
-  Outbox", "manda a out-box.dev", "que tengo en notas de hoy", "actualiza mi
-  briefing", "lee mi Outbox y agregale X", "armame el link de Outbox", "que
-  publique", "borra X de Outbox", emitir API keys para agentes, configurar el
-  brand preset / template, cambiar visibility, generar share links o grants,
-  gestionar teams/empresas (crear un org, agregar/quitar miembros, delegar gestion
-  de keys, mintear/revocar company keys, transferir o borrar un org, plantilla de
-  marca del org, billing del org, dominio propio, ver acceso efectivo/inverso,
-  publicar bajo el handle de una empresa), o cualquier referencia a
-  leer/escribir/gestionar contenido publicado en su espacio personal o de equipo.
+  Publica, lee, actualiza y gestiona paginas (HTMLs) en Outbox (out-box.dev), la
+  biblioteca privada en linea agents-first del usuario, via la API REST con una
+  API key `outbox_*`. Caso central: un agente lee una pagina existente, le suma
+  contexto y la re-publica (versioning automatico). Trigger cuando el usuario
+  diga "publica esto en mi Outbox", "manda a out-box.dev", "que tengo en notas
+  de hoy", "actualiza mi briefing", "lee mi Outbox y agregale X", "armame el
+  link de Outbox", "que publique", "borra X de Outbox", emitir API keys para
+  agentes, configurar el brand preset / template, cambiar visibility, generar
+  share links o grants, gestionar teams/empresas (crear un org, agregar/quitar
+  miembros, delegar gestion de keys, mintear/revocar company keys, transferir o
+  borrar un org, marca o billing del org, dominio propio, ver acceso
+  efectivo/inverso, publicar bajo el handle de una empresa), o cualquier
+  referencia a leer/escribir/gestionar contenido publicado en su espacio
+  personal o de equipo.
 ---
 
 # Outbox — publicar y gestionar paginas via API
@@ -368,6 +368,11 @@ contributors[], project?, preview? }`. Util para listar/agrupar por proyecto o f
 los activos hoy.
 Historial de dias de UN daily: `GET /api/u/<user>/<slug>/dailies?days=N` (`list:u`, con slug).
 Borrar un bloque: `DELETE /api/u/<user>/<slug>/blocks/<blockId>` (`delete:u`, `blk_*`).
+Borrar el daily ENTERO (todos los bloques de todas las fechas + sus manifests):
+`POST /api/dailies/<user>/<slug>/delete` (scope `delete`, folder-aware; verbo POST porque el
+edge WAF 503ea los PATCH y para no chocar con el `DELETE /api/u/<user>/<slug>` de post
+estatico). Idempotente: si no existe → `200 { ok, deletedManifests: 0, deletedBlocks: 0 }`.
+Exito → `{ ok, deletedManifests, deletedBlocks }`. Confirmalo con el usuario (no recuperable).
 
 ### 6. Leer una pagina (HTML servido)
 
@@ -585,9 +590,10 @@ Via MCP: `outbox_read_comments`, `outbox_create_suggestion`, `outbox_accept_sugg
 Outbox soporta **empresas** (orgs): un namespace de equipo bajo el cual varios actores
 publican. `out-box.dev/<handle-org>/<slug>` funciona igual que el de una persona, pero
 el handle pertenece a una **empresa**, no a un individuo. Teams v2 suma sobre F1:
-delegacion de gestion de keys (`canManageKeys`), revocacion de company keys, vistas de
-acceso efectivo/inverso, transferencia y borrado de org, plantilla de marca del org,
-verificacion de dominio, y (diferido / early access) dominio propio y billing del org.
+delegacion de gestion de keys (`canManageKeys`), listado/minteo/revocacion de company keys,
+grupos de acceso a proyecto (CRUD REST), vistas de acceso efectivo/inverso, transferencia y
+borrado de org, plantilla de marca del org, verificacion de dominio, y (diferido / early
+access) dominio propio y billing del org.
 
 **Modelo: una empresa es un `UserRecord{ type:'org', ownerUser }`** en el MISMO keyspace
 de handles que las personas (el handle de un org no puede chocar con el de una persona).
@@ -627,6 +633,12 @@ puntuales (flag `canManageKeys`), sin cederles la administracion del org.
   emitir/revocar company keys de SUS proyectos — **ortogonal** al acceso por proyecto.
   No se puede setear sobre el owner (`400 cannot_modify_owner`, siempre puede). No-miembro
   → `404 not_a_member`. → `{ ok, user, canManageKeys }`.
+- **Listar company keys** (owner **o** miembro con `canManageKeys`, v2):
+  `GET /api/teams/<handle>/keys` → `{ handle, count, keys: [{ id, label, folder, verbs,
+  createdAt, expiresAt, revoked }] }`. `folder` = los proyectos que la key toca (o `null` si
+  ALL_ACCESS, toca todo el org); `verbs` = los verbos distintos de sus scopes. Mismo gate que
+  mint/revoke: un miembro sin la capacidad NO ve el inventario → `403 cannot_manage_keys`;
+  no-miembro → `403 not_a_member`.
 - **Mintear company key** (owner **o** miembro con `canManageKeys`, v2):
   `POST /api/teams/<handle>/keys` — mismo body/shape que `POST /api/keys/agent`
   (`label`, `folder?`, `days?`, `verbs?`). El owner mintea con scope full; un miembro con
@@ -655,12 +667,32 @@ puntuales (flag `canManageKeys`), sin cederles la administracion del org.
   sobre él. El owner siempre; un miembro no-owner solo si ese proyecto cae en SU acceso
   efectivo (`403 forbidden` si no).
 
-> **GAP de grupos (v2 — pendiente).** Los **grupos/equipos** (el mapeo grupo→proyectos y
-> grupo→miembros que arma `groups[]`/`members[]` en los dos endpoints de acceso) **todavia
-> NO tienen endpoints REST**: se pueden **LEER** via los `*/access` de arriba, pero NO se
-> **crean/editan/borran** por API. Crear o ajustar un grupo es por ahora una operacion
-> interna/manual del back. Si el usuario quiere armar grupos por API, avisale que esa capa
-> esta diferida.
+**Grupos de acceso a proyecto (v2) — CRUD REST completo:** un **grupo** mapea un set de
+**proyectos** (folder prefixes del namespace del org) a un set de **miembros**. Es la capa
+que arma los `groups[]`/`members[]` de los dos endpoints de acceso de arriba. Se administra
+por API con **7 endpoints**. Todos requireAuth; **lecturas (GET) = cualquier miembro**;
+**mutaciones = owner-only** (CSRF + actor-admin + `isOwner` — una company key NUNCA administra
+grupos). El `<gid>` se valida (`400 invalid_group_id`); grupo inexistente → `404 group_not_found`.
+
+| Metodo · path | Permiso | Body | Respuesta |
+|---|---|---|---|
+| `GET /api/teams/<handle>/groups` | miembro | — | `{ groups: [{ id, name, projects[] }] }` |
+| `POST /api/teams/<handle>/groups` | owner | `{ name, projects?[] }` | `201 { group: { id, name, projects[] } }` |
+| `POST` (o `PATCH`) `/api/teams/<handle>/groups/<gid>` | owner | `{ name?, projects? }` | `{ group: { id, name, projects[] } }` |
+| `DELETE /api/teams/<handle>/groups/<gid>` | owner | — | `{ ok, deleted: <gid> }` |
+| `GET /api/teams/<handle>/groups/<gid>/members` | miembro | — | `{ members: [<user>, ...] }` |
+| `POST /api/teams/<handle>/groups/<gid>/members` | owner | `{ user }` | `{ ok, user }` |
+| `DELETE /api/teams/<handle>/groups/<gid>/members/<user>` | owner | — | `{ ok, removed: <user> }` |
+
+- **Editar un grupo** (`name`/`projects`): **usá `POST`** sobre `/groups/<gid>` — el edge de
+  Cloudflare bloquea los `PATCH` autenticados a `api.out-box.dev` (regla WAF) antes del worker;
+  el back acepta ambos metodos y POST bypassa el bloqueo (`PATCH` queda por back-compat). Ojo:
+  el `POST` de **crear** vive en la ruta padre `/groups`; el `POST` sobre `/groups/<gid>` **edita**.
+- `name` requerido al crear (no vacio, ≤ 80 chars → `400 invalid_name`). `projects` es opcional
+  (default `[]`), array de folder segments validos, ≤ 100 → `400 invalid_projects`. El `id` del
+  grupo lo genera el server (hex corto), no el body.
+- **Agregar un miembro al grupo**: el `user` DEBE ser miembro del org (`404 not_a_member` si no).
+  Alta/baja idempotentes.
 
 **Acciones DANGER (v2) — owner-only, gating maximo (CSRF + actor-admin + `isOwner`):**
 
@@ -743,6 +775,38 @@ subscripción se asocia al `UserRecord`-org, no a la persona.
 > destino** (el org tiene su propio `UserRecord`/tier), no los del principal.
 
 > Referencia endpoint por endpoint: seccion "Teams / Orgs" en `references/api-reference.md`.
+
+### 18. Automatizacion agent-first: event webhooks y schedules
+
+Dos capas **agent-first** para reaccionar a cambios y disparar acciones en el tiempo. Ambas
+son configurables por API, requireAuth y piden scope **`template:u`**. Son endpoints propios
+del owner (cada webhook/schedule vive en tu namespace).
+
+**Event webhooks** (`/api/webhooks`) — registras un endpoint HTTPS que Outbox dispara en
+eventos (`comment.created`, `version.created`, `page.published`). La entrega es async (la hace
+el cron, `<= 1 min`), firmada con un secret que se muestra **una sola vez** al crear.
+
+- `POST /api/webhooks` `{ url, events[], slugPrefix? }` → `{ ok, webhook }` con el `secret`
+  (guardalo, no se vuelve a mostrar). Registrar exige el **email verificado** del owner
+  (anti-abuse; cuentas OAuth/orgs no se gatean).
+- `GET /api/webhooks` → lista sin secret · `GET /api/webhooks/events` → catalogo de eventos.
+- `POST` (o `PATCH`) `/api/webhooks/<id>` `{ paused: boolean }` → pausar/reanudar (no borra).
+- `DELETE /api/webhooks/<id>` → borrar · `POST /api/webhooks/<id>/test` → encola un evento de
+  prueba.
+
+**Schedules** (`/api/schedules`) — un cron que dispara una accion `webhook` (POST/GET a una
+URL HTTPS) en un `cronExpression` (soporta `@hourly`, `@daily`, o campos min/hora[/dom/mes/dow]).
+Las URLs pasan un filtro SSRF (rechaza rangos privados/metadata). Auto-pausa tras 3 fallos
+consecutivos; ademas podes pausar manualmente.
+
+- `POST /api/schedules` `{ label, cronExpression, timezone?, action: { type: "webhook", url,
+  method?, headers?, bodyTemplate? }, agentKeyId? }` → `{ ok, schedule }`.
+- `GET /api/schedules` → `{ user, count, schedules }`.
+- `POST` (o `PATCH`) `/api/schedules/<id>` `{ paused: boolean }` → pausar/reanudar.
+- `DELETE /api/schedules/<id>` → borrar.
+
+> En webhooks y schedules, para pausar/editar **usá `POST`** (no `PATCH`): mismo bloqueo del
+> edge WAF de Cloudflare a los `PATCH` autenticados. El back acepta ambos.
 
 ---
 
