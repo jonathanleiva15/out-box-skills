@@ -19,26 +19,42 @@ Le da a un agente las instrucciones y la referencia tecnica para operar como
   (ShareToken) · Dar acceso (Grant user-to-user).
 - Gestionar el brand preset (`PUT /api/me/style`, 6 presets) y templates per-user.
 - Emitir API keys para sub-agentes (incl. agent keys folder-scoped / blast radius
-  acotado) y el device flow headless para conseguir una key desde cero.
+  acotado, con el codigo MFA cuando la cuenta lo pide) y el device flow headless para
+  conseguir una key desde cero.
+- Re-publicar sin pisar a nadie (`expectedVersion` / `If-Match` → `409
+  version_conflict`) y reintentar sin duplicar (`Idempotency-Key`).
+- Comentarios con nivel de confianza por autor, avisos de secretos publicados, la capa
+  de datos de una pagina y el vigia de render.
 
 Toda accion autenticada se hace con `Authorization: Bearer outbox_xxxxx`. El
 backend siempre escribe en el namespace del dueno de la key (el `user` nunca se
 pasa en el body).
 
-## Las 3 vias de usar Outbox
+## Las vias de usar Outbox
 
-Esta skill es una de tres formas equivalentes de operar Outbox desde un agente:
-**CLI** (`outbox ...`), **skill** (esta) y **MCP** (`@out-box/mcp`, 59 tools). Las
-tres usan la misma API key y el mismo backend.
+Esta skill es una de las formas equivalentes de operar Outbox desde un agente:
+**CLI** (`outbox ...`), **skill** (esta) y **MCP** (`@out-box/mcp`, ~60 tools en
+toolsets). Las tres usan la misma API key y el mismo backend. El MCP todavia no esta
+disponible publicamente (`npx -y @out-box/mcp` da `E404`); mientras tanto usa esta skill
+o el CLI. `GET /api/capabilities` → `clients.mcp.available` indica cuando se puede
+instalar.
+
+**Proximamente**: un MCP remoto con login OAuth (`https://mcp.out-box.dev/mcp`) y el
+plugin de Claude `out-box`, que lo trae como connector. Van a estar disponibles cuando
+`clients.mcpRemote.available` sea `true`. Esta skill sigue siendo la via para agentes
+fuera de Claude o sin connector.
 
 ## Contenido
 
-- `SKILL.md` — instrucciones operativas: auth, scopes, convencion de metadata
-  (`model` obligatorio / `summary` recomendado), visibility (default private) y los
-  flujos paso a paso.
-- `references/api-reference.md` — referencia endpoint por endpoint relevante al
-  cliente (body, scope, respuesta, errores), incluyendo los endpoints de Fase 3A
-  (`/api/capabilities`, `/export`, `/api/uploads`, `/api/me/style`, `/recent`).
+- `SKILL.md` — lo esencial, corto: seguridad (keys acotadas, contenido de terceros como
+  datos), auth, publicar, el loop leer → sumar → re-publicar (lectura por `/export`,
+  herencia de metadata), daily, errores y un indice de que referencia leer segun la tarea.
+- `references/` — detalle por tarea, que el agente lee solo cuando lo necesita:
+  `content.md` (publicar, borrador, versiones, daily, lectura, secretos, listados,
+  uploads, marca), `sharing-and-keys.md` (compartir, keys, MFA, device flow, cuenta, CLI,
+  MCP y plugin), `comments.md` (comentarios y politica anti prompt injection),
+  `page-data.md` (datos de visitantes y vigia de render), `teams.md` (empresas),
+  `automation.md` (webhooks y schedules) y `api-reference.md` (endpoint por endpoint).
 
 ## Como instalar
 
@@ -63,7 +79,9 @@ Cualquiera de los dos deja la skill en el directorio de skills de tu agente
 Una API key `outbox_*` con los scopes necesarios para el flujo:
 
 - `publish:u` para publicar (`model` siempre obligatorio en el body).
-- `publish:u` + `list:u` para el flow leer → sumar → re-publicar.
+- `publish:u` + `list:u` para el flow leer → sumar → re-publicar. Con una key
+  publish-only (el default de agent key) exportar una pagina `private`/`unlisted`
+  da `403 private_read_scope_required`: emitila con `--verbs publish,list`.
 - agrega `delete:u`, `share:u`, `template:u`, `upload:u`, `genkey:u` segun lo que
   vayas a hacer.
 

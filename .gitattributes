@@ -1,0 +1,4 @@
+# Los .md de la skill van en CRLF (AGENTS.md) y test/skill.test.mjs lo verifica. Fijarlo
+# acá hace que el checkout del CI (ubuntu) los materialice en CRLF sin depender de
+# core.autocrlf de quien commitea.
+skills/**/*.md text eol=crlf
