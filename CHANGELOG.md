@@ -6,6 +6,15 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/). El repo sigue
 
 ## [Unreleased]
 
+### `outbox-publish` 1.8.0 · Empresas v3 (2026-10-01)
+
+- `references/teams.md`: el equipo lee lo privado del org, rol `admin`, invitaciones con
+  aceptacion (y step-up MFA), perfil publico + `llms.txt`/`index.json`, links por
+  destinatario y "¿lo abrio el cliente?" (`/views`, `page.first_viewed`).
+- `references/page-data.md`: el webhook `form.submitted` cuando un visitante completa una
+  pagina (solo nombres de campo).
+- `SKILL.md`: triggers e indice de references con lo nuevo de Empresas.
+
 ### Gate de la ronda 4 (2026-10-01)
 
 - `outbox-publish` (`SKILL.md`, `references/content.md`, `references/api-reference.md`) alineada con el

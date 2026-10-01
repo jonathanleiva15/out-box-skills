@@ -192,4 +192,45 @@ subscripción se asocia al `UserRecord`-org, no a la persona.
 > Quota, tier y limites de tamaño en un publish-as-team son los del **namespace
 > destino** (el org tiene su propio `UserRecord`/tier), no los del principal.
 
+## Empresas v3 (2026-10): equipo, invitaciones y "¿lo abrio el cliente?"
+
+- **El equipo LEE el espacio privado del org.** Un miembro logueado ve (y comenta) las
+  paginas privadas del org en sus proyectos; owner/admin ven todo. No hace falta un share
+  link interno para que el equipo revise una propuesta.
+- **Rol `admin`.** `POST /api/teams/<handle>/members/<user> { "role": "admin"|"member" }`
+  (solo owner; mismo endpoint que `canManageKeys`, POST y no PATCH). Un admin administra
+  roster, invitaciones, grupos, perfil y company keys con acceso total al org; no borra,
+  no transfiere, no toca billing ni dominios. Nombrar admin pide **step-up MFA** igual que
+  otorgar `canManageKeys` (`401 step_up_required` → repetir con `mfaCode`).
+- **Invitaciones con consentimiento (preferilas al alta directa).**
+  `POST /api/teams/<handle>/invites { "user", "role"?: "member"|"admin", "mfaCode"? }`
+  (owner/admin; admin solo lo invita el owner) → `202 { invited, invite }`, vence a los
+  14 dias. Pide step-up MFA como sumar un miembro. La persona ve `GET /api/teams/invites`
+  y responde `POST /api/teams/<handle>/invites/accept|decline` (sesion o key con
+  `admin:self`; una agent key NO acepta por su dueño). Owner/admin:
+  `GET /api/teams/<handle>/invites`, `DELETE /api/teams/<handle>/invites/<user>`.
+  Salir: `POST /api/teams/<handle>/leave` (el owner transfiere antes: `400 owner_cannot_leave`).
+- **Perfil publico (vitrina).** `GET|PUT|DELETE /api/teams/<handle>/profile`, body
+  `{ displayName?, tagline?, accent?: "#rrggbb", links?: [{label,url}] (max 6), pinned?:
+  [slug] (max 12) }` (PUT = reemplazo completo, owner/admin). Activa la landing en
+  `out-box.dev/<handle>` con las destacadas primero.
+- **Indice para agentes.** `https://out-box.dev/<handle>/llms.txt` (Markdown) y
+  `/<handle>/index.json`: perfil + paginas PUBLICAS (nunca unlisted ni privadas). Para
+  descubrir que publico una empresa, lee esto antes que el HTML.
+- **Links por destinatario.** `POST /api/share { resource, resourceType, recipient: "Laura · Acme" }`
+  (un link por persona): cada apertura por ese link queda a su nombre aunque no tenga
+  cuenta. Un miembro crea links de paginas del org con `owner: "<handle>"`;
+  `GET /api/share?user=<org>` y `DELETE /api/share/<token>?user=<org>` para listarlos y
+  revocarlos. Con company key, sin `owner`.
+- **¿Lo abrio el cliente?** `GET /api/u/<user>/<slug>/views` → `{ total, today, receipts,
+  firstViewedAt, firstViewer }`. Las vistas del owner y de miembros del org NO cuentan. En
+  una pagina publica una vista logueada no queda identificada: para saber QUIEN abrio,
+  manda un link por destinatario. El webhook `page.first_viewed` avisa la primera apertura
+  externa (sirve para Slack/Discord directo).
+- **Paginas que el cliente completa** (relevamientos, fichas, checklists): usan la capa
+  de datos por pagina (`references/page-data.md`). Cuando un visitante completa, sale el
+  webhook `form.submitted` (solo nombres de campo, nunca los valores).
+- **Subdominio por empresa**: apagado hasta que se configure una zona de contenido
+  separada; no lo ofrezcas como activo.
+
 > Referencia endpoint por endpoint: seccion "Teams / Orgs" en `api-reference.md`.

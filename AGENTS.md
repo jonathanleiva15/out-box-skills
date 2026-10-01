@@ -73,7 +73,7 @@ npx skills add jonathanleiva15/out-box-skills
 
 ## Version
 
-- Skill `outbox-publish`: **1.7.0** (ver `version` en el frontmatter de `SKILL.md`, fuente de verdad).
+- Skill `outbox-publish`: **1.8.0** (ver `version` en el frontmatter de `SKILL.md`, fuente de verdad).
 - Repo (`package.json`): **0.4.0**.
 - El manifest `skills.sh.json` declara el grouping "Outbox" con la skill `outbox-publish`.
 

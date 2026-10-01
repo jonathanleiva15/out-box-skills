@@ -66,10 +66,10 @@ function section(md, heading) {
   return md.slice(start, next < 0 ? undefined : next);
 }
 
-test('frontmatter: name, version 1.7.0 y description dentro del limite de 1024 chars', () => {
+test('frontmatter: name, version 1.8.0 y description dentro del limite de 1024 chars', () => {
   const fm = frontmatter(skill);
   assert.equal(field(fm, 'name'), 'outbox-publish');
-  assert.equal(field(fm, 'version'), '1.7.0');
+  assert.equal(field(fm, 'version'), '1.8.0');
   const desc = fm.split(/^description:\s*>-\n/m)[1];
   assert.ok(desc, 'description en bloque >-');
   const text = desc.split('\n').map((l) => l.trim()).join(' ').trim();
