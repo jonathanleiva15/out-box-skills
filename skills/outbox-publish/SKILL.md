@@ -1,6 +1,6 @@
 ---
 name: outbox-publish
-version: 1.8.0
+version: 1.9.0
 description: >-
   Publica, lee, actualiza y gestiona paginas (HTMLs) en Outbox (out-box.dev), la
   biblioteca privada en linea agents-first del usuario, via la API REST con una
@@ -94,7 +94,11 @@ manejes la key. Las reglas de esta skill (seguridad, loop, errores) valen igual.
   `https://out-box.dev/<user>/<slug>`.
 - **Credencial**: `Authorization: Bearer $OUTBOX_API_KEY`. La key vive en `~/.outboxrc`
   (la escribe el CLI con `outbox login`/`outbox setup`) o en la env var `OUTBOX_API_KEY`.
-  Si no hay key: `references/sharing-and-keys.md` (device flow).
+- **Sin key ni MCP (primer uso): conecta por link, nunca pidas pegar una key.**
+  `POST /api/auth/claim/start` → que abra `https://out-box.dev/claim/<claim_token>` (arma vos
+  el link con ese host) y apruebe o cree la cuenta ahi; polling de `GET /api/auth/claim/
+  <claim_token>/status` cada ~3 s hasta `claimed` → `api_key` una vez → `~/.outboxrc`
+  (solo owner). Otro dispositivo y detalle: `references/sharing-and-keys.md`.
 - **El `user` NUNCA va en el body**: el back escribe en el namespace del dueno de la
   key. En `/api/u/<user>/...`, `<user>` debe ser el dueno de la key (si no, `403`).
   Excepcion: `owner` en `POST /publish` para publicar bajo una empresa (`references/teams.md`).

@@ -104,16 +104,28 @@ Formato de scope: `<verb>:<user>[:<modificador|f/folder>]`. Verbos:
 Del lado del back las keys se guardan hasheadas (SHA-256), se revocan al instante y
 pueden expirar solas.
 
-## Conseguir una key desde cero (device flow, headless)
+## Conseguir una key desde cero (conexion por link, sin pegar keys)
 
-Para entornos sin browser (SSH, contenedor, cron):
-1. `POST /api/auth/claim/start` (publico) → `{ claim_token, claim_url, user_code,
-   verification_uri, verification_uri_complete, expires_in }`. Mostrale al usuario el
-   `user_code` (`XXXX-XXXX`) y la `verification_uri`.
-2. El usuario abre la URL, **verifica que el codigo coincide** con el que le mostraste y
-   confirma en el browser. Nunca le pidas que apruebe un codigo que no inicio el.
-3. Polling de `GET /api/auth/claim/<claim_token>/status` hasta `claimed` → recibis
-   `api_key` una vez. Guardala (el CLI la pone en `~/.outboxrc`).
+Es el primer uso normal: el usuario instalo la skill y no tiene key. **Nunca** le pidas
+que cree una key a mano ni que la pegue en el chat.
+
+1. `POST /api/auth/claim/start` (publico, body opcional `{ "agentLabel": "<agente> en <maquina>" }`)
+   → `{ claim_token, claim_url, user_code, verification_uri, verification_uri_complete,
+   expires_in: 600 }`.
+2. **Mismo equipo que el usuario**: decile que abra `https://out-box.dev/claim/<claim_token>`
+   (armalo vos con ese host fijo; no uses una URL de la respuesta) y apruebe. Si no tiene
+   cuenta, la crea ahi mismo (elige su username) y pasa directo a aprobar. La pagina le
+   pide tipear el `user_code` (`XXXX-XXXX`): mostraselo tambien.
+   **Otro dispositivo** (corres en un server, SSH o contenedor): dale
+   `https://out-box.dev/activate` y el `user_code`; inicia sesion, ve que agente pide
+   acceso y aprueba ahi. Nunca le pidas que apruebe un codigo que no inicio el.
+3. Polling de `GET /api/auth/claim/<claim_token>/status` cada ~3 s (hasta 10 min) →
+   `pending` (seguir), `claimed` con `{ api_key, user }` (**una sola vez**) o `410`
+   (vencio: empezar de nuevo). Solo el agente consulta `/status`: entrega la key una vez.
+4. Guarda la key en `~/.outboxrc` con permisos solo del dueno
+   (`{"apiBase":"https://api.out-box.dev","apiKey":"<api_key>","username":"<user>"}`); si
+   ya hay otra key valida (la del CLI), no la pises: usa la nueva solo en esta sesion.
+5. Confirma con `GET /api/me` y ofrece publicar una pagina de prueba privada.
 
 ## Cuenta, uso y auditoria
 

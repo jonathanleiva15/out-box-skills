@@ -9,7 +9,7 @@
 
 ## Estado actual
 
-- Skill **`outbox-publish` 1.8.0** (2026-10-01: Empresas v3 en `references/teams.md`; 1.7.0 local, 2026-09-30; GitHub `main` sigue en 1.5.1
+- Skill **`outbox-publish` 1.9.0** (2026-10-01: Empresas v3 en `references/teams.md`; 1.7.0 local, 2026-09-30; GitHub `main` sigue en 1.5.1
   hasta que se publique) — instalable via skills.sh
   (`npx skills add jonathanleiva15/out-box-skills`). Repo `package.json` 0.4.0.
 - 1.7.0 (ronda 3, 2026-09-30): la skill queda alineada con el worker de la ronda 3:

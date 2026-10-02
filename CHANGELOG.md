@@ -6,6 +6,15 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/). El repo sigue
 
 ## [Unreleased]
 
+### `outbox-publish` 1.9.0 · conexion por link (2026-10-02)
+
+- `SKILL.md`: sin key ni MCP, el agente conecta por link (`claim/start` →
+  `out-box.dev/claim/<token>` → polling de `/status` → `~/.outboxrc`) y nunca pide pegar
+  una key. Antes el SKILL.md solo derivaba a la reference.
+- `references/sharing-and-keys.md`: el "device flow" pasa a ser el primer uso normal,
+  alineado con prod: link en el mismo equipo (signup inline con username), `/activate`
+  con sesion para otro dispositivo, `/status` solo para el agente, no pisar la key del CLI.
+
 ### `outbox-publish` 1.8.0 · Empresas v3 (2026-10-01)
 
 - `references/teams.md`: el equipo lee lo privado del org, rol `admin`, invitaciones con
