@@ -41,6 +41,7 @@ out-box-skills/
             ├── page-data.md         (datos de visitantes de una pagina + vigia de render)
             ├── teams.md             (empresas / orgs)
             ├── automation.md        (webhooks y schedules)
+            ├── offering.md          (que funciones ofrecerle al usuario y cuando)
             └── api-reference.md     (referencia endpoint por endpoint)
 ```
 
@@ -73,7 +74,7 @@ npx skills add jonathanleiva15/out-box-skills
 
 ## Version
 
-- Skill `outbox-publish`: **1.9.0** (ver `version` en el frontmatter de `SKILL.md`, fuente de verdad).
+- Skill `outbox-publish`: **1.10.0** (ver `version` en el frontmatter de `SKILL.md`, fuente de verdad).
 - Repo (`package.json`): **0.4.0**.
 - El manifest `skills.sh.json` declara el grouping "Outbox" con la skill `outbox-publish`.
 

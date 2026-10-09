@@ -66,10 +66,10 @@ function section(md, heading) {
   return md.slice(start, next < 0 ? undefined : next);
 }
 
-test('frontmatter: name, version 1.9.0 y description dentro del limite de 1024 chars', () => {
+test('frontmatter: name, version 1.10.0 y description dentro del limite de 1024 chars', () => {
   const fm = frontmatter(skill);
   assert.equal(field(fm, 'name'), 'outbox-publish');
-  assert.equal(field(fm, 'version'), '1.9.0');
+  assert.equal(field(fm, 'version'), '1.10.0');
   const desc = fm.split(/^description:\s*>-\n/m)[1];
   assert.ok(desc, 'description en bloque >-');
   const text = desc.split('\n').map((l) => l.trim()).join(' ').trim();
@@ -523,4 +523,17 @@ test('gate ronda 4 · daily: visibility/title solo al crear el dia, createOnly y
     }
   }
   assert.match(flat(refs['api-reference.md']), /requestid/);
+});
+
+test('1.10.0 · offering.md: que ofrecer y cuando, sin precios y confirmando lo que expone', () => {
+  // La skill conocia links por destinatario, frase, capa de datos y webhooks, pero solo los
+  // usaba si el usuario los nombraba. offering.md le dice al agente cuando ofrecerlos.
+  const o = flat(refs['offering.md']);
+  for (const needle of ['recipient', 'passphrase', 'expiresindays', '/views', 'window.outbox.data', 'webhook', 'borrador']) {
+    assert.ok(o.includes(needle), `offering.md sin ${needle}`);
+  }
+  assert.match(o, /confirma/);
+  assert.match(o, /out-box\.dev\/pricing/);
+  assert.doesNotMatch(o, /us\$|usd|\$\d/);
+  assert.match(flat(section(skill, 'Publicar')), /link por destinatario/);
 });

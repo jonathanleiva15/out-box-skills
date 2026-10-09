@@ -6,6 +6,16 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/). El repo sigue
 
 ## [Unreleased]
 
+### `outbox-publish` 1.10.0 · que ofrecer y cuando (2026-10-09)
+
+- `references/offering.md` (nuevo): momentos en los que el agente ofrece, en una linea y sin
+  ejecutar sin confirmacion, funciones que el usuario no suele pedir: link por destinatario
+  (con el mail de apertura), frase y vencimiento, borrador, `/views`, capa de datos,
+  webhooks a Slack, brand preset, Empresas y daily. Antes la skill las documentaba pero solo
+  las usaba si el usuario las nombraba.
+- `SKILL.md`: fila nueva en el indice y, al compartir con alguien, ofrecer un link por
+  destinatario antes que volver la pagina `unlisted`.
+
 ### `outbox-publish` 1.9.0 · conexion por link (2026-10-02)
 
 - `SKILL.md`: sin key ni MCP, el agente conecta por link (`claim/start` →

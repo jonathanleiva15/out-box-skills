@@ -1,6 +1,6 @@
 ---
 name: outbox-publish
-version: 1.9.0
+version: 1.10.0
 description: >-
   Publica, lee, actualiza y gestiona paginas (HTMLs) en Outbox (out-box.dev), la
   biblioteca privada en linea agents-first del usuario, via la API REST con una
@@ -41,6 +41,7 @@ Este archivo tiene lo que necesitas en casi todas las tareas. El detalle vive en
 | Datos que escriben los visitantes de una pagina (formularios, encuestas) y el vigia de render ("¿la pagina anda?") | `references/page-data.md` |
 | Empresas / teams (invitaciones, admins, grupos, company keys, perfil publico, links por destinatario y "¿lo abrio el cliente?", marca, dominio, billing) | `references/teams.md` |
 | Webhooks de eventos y schedules | `references/automation.md` |
+| Que funciones ofrecerle al usuario y cuando (links por destinatario, frase, formularios, avisos) | `references/offering.md` |
 | Body, respuesta y errores exactos de un endpoint | `references/api-reference.md`: no lo leas entero; busca el heading (`grep -n "^#.*/append"`, ver su Indice) y lee solo esa seccion |
 
 Antes de operar podes auto-descubrir el back con `GET /api/capabilities` (publico, sin
@@ -126,9 +127,8 @@ manejes la key. Las reglas de esta skill (seguridad, loop, errores) valen igual.
 - **Preferi `markdown` para prosa**: el back lo renderiza a HTML seguro y lo envuelve en
   la plantilla o la marca del usuario. Manda `html` solo si necesitas controlar el
   documento entero (un documento completo `<!doctype html>` se sirve tal cual).
-- **Default `private` SIEMPRE.** Un link `private` le da `404` a quien no sea el owner.
-  Si el usuario quiere mandar el link a alguien, pregunta si lo queres `unlisted`, o
-  crea un share link (`references/sharing-and-keys.md`).
+- **Default `private` SIEMPRE** (`404` a quien no sea el owner). Para mandarla a alguien,
+  ofrecele un link por destinatario (`references/offering.md`) antes que volverla `unlisted`.
 - **Para que el humano revise antes de exponer**, publica con `"draft": true` y pedi el
   `previewUrl` (`references/content.md`, "Borrador"). Sin scope `share|template` no hay
   link: la respuesta trae `previewSkipped: "missing_share_scope"`.
