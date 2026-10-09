@@ -1,98 +1,97 @@
 # outbox-publish (skill)
 
-Skill de agente para publicar, leer, actualizar y gestionar paginas (HTMLs) en
-**Outbox** (`out-box.dev`) — una biblioteca privada en linea, agents-first,
-via la API REST con una API key `outbox_*`.
+Agent skill to publish, read, update and manage pages (HTML files) in
+**Outbox** (`out-box.dev`) — a private online library, agents-first,
+through the REST API with an `outbox_*` API key.
 
-## Que es
+## What it is
 
-Le da a un agente las instrucciones y la referencia tecnica para operar como
-**cliente** de la API de Outbox (`https://api.out-box.dev`):
+It gives an agent the instructions and the technical reference to work as a
+**client** of the Outbox API (`https://api.out-box.dev`):
 
-- Publicar paginas HTML (`POST /publish`) y desde templates del catalogo.
-- El flow agents-first central: **leer una pagina existente, sumarle contexto y
-  re-publicarla** (versioning automatico en cada publish al mismo slug).
-- Daily documents (append de bloques fechados sin re-escribir el HTML).
-- Listar, buscar, leer, exportar (`/export`), feed de cambios (`/recent`), cambiar
-  visibility, rollback de versiones, subir imagenes (`/api/uploads`).
-- Las **3 formas de compartir**: Hacer publica (visibility) · Crear link
-  (ShareToken) · Dar acceso (Grant user-to-user).
-- Gestionar el brand preset (`PUT /api/me/style`, 6 presets) y templates per-user.
-- Emitir API keys para sub-agentes (incl. agent keys folder-scoped / blast radius
-  acotado, con el codigo MFA cuando la cuenta lo pide) y el device flow headless para
-  conseguir una key desde cero.
-- Re-publicar sin pisar a nadie (`expectedVersion` / `If-Match` → `409
-  version_conflict`) y reintentar sin duplicar (`Idempotency-Key`).
-- Comentarios con nivel de confianza por autor, avisos de secretos publicados, la capa
-  de datos de una pagina y el vigia de render.
+- Publish HTML pages (`POST /publish`) and from catalog templates.
+- The core agents-first flow: **read an existing page, add context to it and
+  republish it** (automatic versioning on every publish to the same slug).
+- Daily documents (append dated blocks without rewriting the HTML).
+- List, search, read, export (`/export`), change feed (`/recent`), change
+  visibility, roll back versions, upload images (`/api/uploads`).
+- The **3 ways to share**: Make public (visibility) · Create link
+  (ShareToken) · Grant access (user-to-user Grant).
+- Manage the brand preset (`PUT /api/me/style`, 6 presets) and per-user templates.
+- Issue API keys for sub-agents (incl. folder-scoped agent keys / limited blast
+  radius, with the MFA code when the account requires it) and the headless device flow to
+  get a key from scratch.
+- Republish without overwriting anyone (`expectedVersion` / `If-Match` → `409
+  version_conflict`) and retry without duplicating (`Idempotency-Key`).
+- Comments with a trust level per author, notices about published secrets, a page's data
+  layer and the render watch.
 
-Toda accion autenticada se hace con `Authorization: Bearer outbox_xxxxx`. El
-backend siempre escribe en el namespace del dueno de la key (el `user` nunca se
-pasa en el body).
+Every authenticated action uses `Authorization: Bearer outbox_xxxxx`. The
+backend always writes to the namespace of the key's owner (the `user` is never
+sent in the body).
 
-## Las vias de usar Outbox
+## The ways to use Outbox
 
-Esta skill es una de las formas equivalentes de operar Outbox desde un agente:
-**CLI** (`outbox ...`), **skill** (esta) y **MCP** (`@out-box/mcp`, ~60 tools en
-toolsets). Las tres usan la misma API key y el mismo backend. El MCP todavia no esta
-disponible publicamente (`npx -y @out-box/mcp` da `E404`); mientras tanto usa esta skill
-o el CLI. `GET /api/capabilities` → `clients.mcp.available` indica cuando se puede
-instalar.
+This skill is one of the equivalent ways to operate Outbox from an agent:
+**CLI** (`outbox ...`), **skill** (this one) and **local MCP** (`npx -y @out-box/mcp`,
+tools grouped in toolsets). All three use the same API key and the same backend.
+`GET /api/capabilities` → `clients.mcp.available` and `clients.mcp.latest` say whether
+it is published and which version is current.
 
-**Proximamente**: un MCP remoto con login OAuth (`https://mcp.out-box.dev/mcp`) y el
-plugin de Claude `out-box`, que lo trae como connector. Van a estar disponibles cuando
-`clients.mcpRemote.available` sea `true`. Esta skill sigue siendo la via para agentes
-fuera de Claude o sin connector.
+The **remote MCP** (`https://mcp.out-box.dev/mcp`, OAuth login, no API key) works as a
+Claude connector; `clients.mcpRemote.available` says it is live. The `out-box` Claude
+plugin, which bundles it with slash commands, is coming soon. This skill remains the way
+for agents outside Claude or without a connector.
 
-## Contenido
+## Contents
 
-- `SKILL.md` — lo esencial, corto: seguridad (keys acotadas, contenido de terceros como
-  datos), auth, publicar, el loop leer → sumar → re-publicar (lectura por `/export`,
-  herencia de metadata), daily, errores y un indice de que referencia leer segun la tarea.
-- `references/` — detalle por tarea, que el agente lee solo cuando lo necesita:
-  `content.md` (publicar, borrador, versiones, daily, lectura, secretos, listados,
-  uploads, marca), `sharing-and-keys.md` (compartir, keys, MFA, device flow, cuenta, CLI,
-  MCP y plugin), `comments.md` (comentarios y politica anti prompt injection),
-  `page-data.md` (datos de visitantes y vigia de render), `teams.md` (empresas),
-  `automation.md` (webhooks y schedules) y `api-reference.md` (endpoint por endpoint).
+- `SKILL.md` — the essentials, short: security (scoped keys, third-party content as
+  data), auth, publishing, the read → add → republish loop (reading via `/export`,
+  metadata inheritance), daily, errors and an index of which reference to read for each task.
+- `references/` — per-task detail, which the agent reads only when it needs it:
+  `content.md` (publishing, draft, versions, daily, reading, secrets, listings,
+  uploads, brand), `sharing-and-keys.md` (sharing, keys, MFA, device flow, account, CLI,
+  MCP and plugin), `comments.md` (comments and anti prompt injection policy),
+  `page-data.md` (visitor data and render watch), `teams.md` (Teams),
+  `automation.md` (webhooks and schedules) and `api-reference.md` (endpoint by endpoint).
 
-## Como instalar
+## How to install
 
-El install canonico es via skills.sh:
+The canonical install is through skills.sh:
 
 ```bash
 npx skills add jonathanleiva15/out-box-skills
 ```
 
-O, si tenes el CLI `outbox`, el atajo equivalente:
+Or, if you have the `outbox` CLI, the equivalent shortcut:
 
 ```bash
 outbox skill install
 ```
 
-Cualquiera de los dos deja la skill en el directorio de skills de tu agente
-(`~/.claude/skills/outbox-publish` para Claude Code). La skill se activa por su
-`description` cuando el usuario pide publicar/leer/actualizar contenido en Outbox.
+Either one puts the skill in your agent's skills directory
+(`~/.claude/skills/outbox-publish` for Claude Code). The skill activates through its
+`description` when the user asks to publish/read/update content in Outbox.
 
-## Prerrequisito
+## Prerequisite
 
-Una API key `outbox_*` con los scopes necesarios para el flujo:
+An `outbox_*` API key with the scopes the flow needs:
 
-- `publish:u` para publicar (`model` siempre obligatorio en el body).
-- `publish:u` + `list:u` para el flow leer → sumar → re-publicar. Con una key
-  publish-only (el default de agent key) exportar una pagina `private`/`unlisted`
-  da `403 private_read_scope_required`: emitila con `--verbs publish,list`.
-- agrega `delete:u`, `share:u`, `template:u`, `upload:u`, `genkey:u` segun lo que
-  vayas a hacer.
+- `publish:u` to publish (`model` always required in the body).
+- `publish:u` + `list:u` for the read → add → republish flow. With a
+  publish-only key (the agent key default), exporting a `private`/`unlisted` page
+  gives `403 private_read_scope_required`: issue it with `--verbs publish,list`.
+- add `delete:u`, `share:u`, `template:u`, `upload:u`, `genkey:u` depending on what
+  you are going to do.
 
-El usuario obtiene/emite la key desde out-box.dev, el CLI `outbox`
-(`outbox login` / `outbox setup` la guardan en `~/.outboxrc`), o
-`POST /api/keys/agent` con una key que tenga `genkey:u`. Para entornos headless,
-el device flow (`POST /api/auth/claim/start` → `user_code` → `/resolve`) permite
-conseguir una key desde cero sin browser local.
+The user gets/issues the key from out-box.dev, the `outbox` CLI
+(`outbox login` / `outbox setup` save it to `~/.outboxrc`), or
+`POST /api/keys/agent` with a key that has `genkey:u`. For headless environments,
+the device flow (`POST /api/auth/claim/start` → `user_code` → `/resolve`) lets you
+get a key from scratch without a local browser.
 
 ## Links
 
-- Producto: https://out-box.dev
+- Product: https://out-box.dev
 - API: https://api.out-box.dev
-- Auto-descubrimiento: https://api.out-box.dev/api/capabilities
+- Self-discovery: https://api.out-box.dev/api/capabilities

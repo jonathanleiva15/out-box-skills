@@ -6,6 +6,30 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/). El repo sigue
 
 ## [Unreleased]
 
+## [0.5.0] · 2026-10-09
+
+### `outbox-publish` 1.11.0 · la skill pasa al ingles y se pone al dia (2026-10-09)
+
+- Toda la skill (`SKILL.md`, `README.md` y `references/`) queda escrita en ingles, porque el
+  mercado prioritario es EE.UU. El agente le contesta al usuario en el idioma del usuario
+  (`SKILL.md`, "Language"). Las frases que fijan los tests pasan al ingles con el mismo sentido.
+- MCP local (`@out-box/mcp`, 0.3.1 en npm) y MCP remoto (`mcp.out-box.dev`) dejan de ser
+  "proximamente": se ofrecen mientras `clients.mcp.available` / `clients.mcpRemote.available`
+  sean `true`. El plugin `out-box` sigue privado: la skill no lo ofrece. Se saca el "E404" y el
+  "~60 tools".
+- Las tools del MCP se nombran por sufijo (`outbox_<action>`): conectado como connector el
+  prefijo cambia (por ejemplo `mcp__OUT-BOX__outbox_publish`).
+- Toolsets por default del MCP local: `core`, `comments` y `sharing`. Lo que expone el remoto,
+  al dia: aperturas (`outbox_page_views`), datos de pagina (`outbox_page_data`), vigia de
+  render (`outbox_render_status`), borrar, rollback, go-live y uploads; no crea links ni keys.
+- Aperturas (`references/teams.md`, `SKILL.md`): verbo de solo lectura `views` (lo traen las
+  agent keys nuevas), `/views` tambien con una key que puede leer la pagina, `receipts` con
+  `link:<recipient>`, `opens` por link en `GET /api/share`, mail de apertura con baja por
+  `POST /api/me/email-prefs { "opens": false }`, CLI `outbox opens` y `outbox share --recipient`.
+- Team: el checkout sigue en early access; el plan se pide con "Contact us" en
+  `out-box.dev/pricing` (sin precios en la skill).
+- `api-reference.md`: seccion de `GET /api/u/<user>/<slug>/views` y version de capabilities 12.
+
 ### `outbox-publish` 1.10.0 · que ofrecer y cuando (2026-10-09)
 
 - `references/offering.md` (nuevo): momentos en los que el agente ofrece, en una linea y sin

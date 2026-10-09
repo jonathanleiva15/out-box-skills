@@ -17,15 +17,15 @@ test('gate 5 · draft: previewSkipped missing_share_scope documentado', () => {
   }
   assert.match(read('references/api-reference.md'), /previewSkipped\? \}/);
   for (const f of ['references/api-reference.md', 'references/content.md']) {
-    assert.match(read(f), /`null`.*solo keys human|una key agent no puede pedir `previewExpiresInDays: null`/i, f);
+    assert.match(read(f), /`null`.*human keys only|an agent key cannot request `previewExpiresInDays: null`/i, f);
   }
 });
 
 test('gate 5 · daily: visibility/title/project se heredan del día anterior', () => {
   for (const f of ['references/api-reference.md', 'references/content.md']) {
     const md = read(f);
-    assert.doesNotMatch(md, /opcional \(al crear el daily\)/, `${f}: texto viejo`);
-    assert.match(md, /hereda la del anterior/, f);
+    assert.doesNotMatch(md, /optional \(when creating the daily\)/, `${f}: old text`);
+    assert.match(md, /inherits (the previous day's|them from the previous day|the previous one's)/, f);
   }
-  assert.match(read('references/content.md'), /son de la \*\*pagina\*\* del daily/);
+  assert.match(read('references/content.md'), /belong to the daily's \*\*page\*\*/);
 });

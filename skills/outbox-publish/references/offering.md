@@ -1,37 +1,39 @@
-# Que ofrecer y cuando
+# What to offer and when
 
-> Parte de la skill `outbox-publish`. Outbox tiene funciones que el usuario casi nunca
-> pide porque no sabe que existen. Este archivo dice en que momento ofrecerlas.
+> Part of the `outbox-publish` skill. Outbox has features users almost never ask for
+> because they do not know they exist. This file says when to offer them.
 
-## Como ofrecer
+## How to offer
 
-- **Una sugerencia, una linea, en el momento justo.** Como mucho dos por tarea. Decile
-  que gana ("vas a saber cuando la abra") y segui con lo que pidio.
-- **Ofrecer no es hacer.** Todo lo que expone contenido o manda datos afuera (links,
-  visibility, capa de datos, webhooks) se confirma antes (regla 4 de Seguridad en
-  `SKILL.md`). El detalle de cada endpoint esta en la reference que se cita.
-- **No repitas.** Si ya lo usa o dijo que no, no lo vuelvas a ofrecer en la conversacion.
-- **Solo lo que existe.** Si `GET /api/capabilities` no lo anuncia o la ruta da `404`, no
-  lo ofrezcas. Si una funcion depende del plan, remiti a `https://out-box.dev/pricing`
-  sin dar precios.
+- **One suggestion, one line, at the right moment.** At most two per task. Say what the
+  user gains ("you'll know when she opens it") and carry on with what they asked for.
+- **Offering is not doing.** Anything that exposes content or sends data out (links,
+  visibility, data layer, webhooks) is confirmed first (Security rule 4 in `SKILL.md`).
+  The detail of each endpoint is in the reference cited.
+- **Do not repeat.** If they already use it or said no, do not offer it again in the
+  conversation.
+- **Only what exists.** If `GET /api/capabilities` does not announce it or the route
+  returns `404`, do not offer it. If a feature depends on the plan, point to
+  `https://out-box.dev/pricing` without quoting prices.
 
-## Momentos
+## Moments
 
-| Cuando el usuario... | Ofrecele | Detalle |
+| When the user... | Offer | Detail |
 |---|---|---|
-| Va a mandarle la pagina a un cliente, prospecto o persona concreta | Un **link por destinatario** (`POST /api/share` con `recipient: "Laura · Acme"`) en vez de volverla `unlisted`: cada apertura queda a nombre de esa persona y a quien creo el link le llega un mail cuando la abren (categoria `opens`, activa por default). Un link por persona. | `sharing-and-keys.md`, `teams.md` |
-| Comparte precios, una propuesta o algo sensible | **Frase de acceso** (`passphrase`) y **vencimiento** (`expiresInDays`) en el link. Si la pagina va `unlisted`/`public`, un `ttl` la vuelve `private` sola. | `sharing-and-keys.md`, `content.md` |
-| Quiere revisarla antes de que otro la vea | **Borrador** con `previewUrl` y go-live cuando lo apruebe. | `content.md` ("Borrador") |
-| Pregunta si el cliente la vio | `GET /api/u/<user>/<slug>/views`. Si la mando sin link por destinatario, deciselo: para la proxima, un link por persona dice quien la abrio. | `teams.md` |
-| Arma algo que otros completan (relevamiento, checklist, encuesta, aprobacion, RSVP) | La **capa de datos**: la pagina guarda lo que escriben con `window.outbox.data`, sin formularios externos. Hay que activar la politica (confirmalo). | `page-data.md` |
-| Quiere enterarse en Slack o en otra herramienta | Un **webhook** a un Incoming Webhook de Slack (`hooks.slack.com`) o de Discord: sale en su formato nativo en ese canal (no hay mensajes directos a una persona) (aperturas, comentarios, versiones, formularios completados; el catalogo vivo esta en `GET /api/webhooks/events`). | `automation.md` |
-| Publica la primera pagina para clientes y no tiene marca | Un **brand preset** o su template, para que todas salgan con su identidad. | `content.md` |
-| Trabaja con un equipo comercial que comparte paginas | **Empresas**: espacio del equipo, marca comun, links por destinatario del equipo. | `teams.md` |
-| Publica cosas que necesita leer cada dia | Un **daily** con `append`, en vez de una pagina nueva por dia. | `content.md` |
+| Is going to send the page to a client, prospect or specific person | A **per-recipient link** (`POST /api/share` with `recipient: "Laura · Acme"`, or `outbox share <slug> --recipient "Laura · Acme"`) instead of making it `unlisted`: every open is recorded under that person's name and whoever created the link gets an email when they open it (category `opens`, on by default). One link per person. | `sharing-and-keys.md`, `teams.md` |
+| Shares prices, a proposal or something sensitive | A **passphrase** (`passphrase`) and an **expiration** (`expiresInDays`) on the link. If the page goes `unlisted`/`public`, a `ttl` turns it back to `private` on its own. | `sharing-and-keys.md`, `content.md` |
+| Wants to review it before anyone else sees it | A **draft** with `previewUrl` and go-live when they approve it. | `content.md` ("Draft") |
+| Asks whether the client saw it | `GET /api/u/<user>/<slug>/views` (`outbox opens <slug>` in the CLI, `outbox_page_views` in the MCP); `GET /api/share` also lists the `opens` of each link. If they sent it without a per-recipient link, tell them: next time, one link per person says who opened it. | `teams.md` |
+| Builds something others fill in (intake, checklist, survey, approval, RSVP) | The **data layer**: the page stores what they write with `window.outbox.data`, no external forms. The policy must be turned on (confirm it). | `page-data.md` |
+| Wants to hear about it in Slack or another tool | A **webhook** to a Slack (`hooks.slack.com`) or Discord Incoming Webhook: it is posted in that channel in its native format (there are no direct messages to a person) (opens, comments, versions, submitted forms; the live catalog is in `GET /api/webhooks/events`). | `automation.md` |
+| Publishes their first page for clients and has no brand | A **brand preset** or their own template, so every page goes out with their identity. | `content.md` |
+| Works with a sales team that shares pages | **Teams**: the team's space, a shared brand, per-recipient links for the team. The Team plan is requested with "Contact us" on `https://out-box.dev/pricing`. | `teams.md` |
+| Publishes things they need to read every day | A **daily** with `append`, instead of a new page per day. | `content.md` |
 
-## Ejemplo
+## Example
 
-El usuario dice "publica la propuesta para Acme y pasame el link para Laura". Publica
-`private`, y antes de crear el link pregunta en una linea: "¿Te armo un link solo para
-Laura? Vas a saber cuando lo abra, y si queres le pongo una frase de acceso." Con su si,
-`POST /api/share` con `recipient` (y `passphrase` si la pidio) y comparti esa `url`.
+The user says "publish the proposal for Acme and give me the link for Laura". Publish it
+`private`, and before creating the link ask in one line: "Want a link just for Laura?
+You'll know when she opens it, and I can add a passphrase if you like." With their yes,
+`POST /api/share` with `recipient` (and `passphrase` if they asked for it) and share that
+`url`.
