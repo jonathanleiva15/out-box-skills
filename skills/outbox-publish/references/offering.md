@@ -24,7 +24,7 @@
 | Quiere revisarla antes de que otro la vea | **Borrador** con `previewUrl` y go-live cuando lo apruebe. | `content.md` ("Borrador") |
 | Pregunta si el cliente la vio | `GET /api/u/<user>/<slug>/views`. Si la mando sin link por destinatario, deciselo: para la proxima, un link por persona dice quien la abrio. | `teams.md` |
 | Arma algo que otros completan (relevamiento, checklist, encuesta, aprobacion, RSVP) | La **capa de datos**: la pagina guarda lo que escriben con `window.outbox.data`, sin formularios externos. Hay que activar la politica (confirmalo). | `page-data.md` |
-| Quiere enterarse en Slack o en otra herramienta | Un **webhook**: si la URL es de Slack o Discord sale en su formato nativo (aperturas, comentarios, versiones, formularios completados; el catalogo vivo esta en `GET /api/webhooks/events`). | `automation.md` |
+| Quiere enterarse en Slack o en otra herramienta | Un **webhook** a un Incoming Webhook de Slack (`hooks.slack.com`) o de Discord: sale en su formato nativo en ese canal (no hay mensajes directos a una persona) (aperturas, comentarios, versiones, formularios completados; el catalogo vivo esta en `GET /api/webhooks/events`). | `automation.md` |
 | Publica la primera pagina para clientes y no tiene marca | Un **brand preset** o su template, para que todas salgan con su identidad. | `content.md` |
 | Trabaja con un equipo comercial que comparte paginas | **Empresas**: espacio del equipo, marca comun, links por destinatario del equipo. | `teams.md` |
 | Publica cosas que necesita leer cada dia | Un **daily** con `append`, en vez de una pagina nueva por dia. | `content.md` |
