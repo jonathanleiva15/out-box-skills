@@ -818,16 +818,24 @@ Link secreto para no-users (sin volver la pagina publica). **Scope** `share:u` o
   "resource": "<slug-o-prefijo>",
   "resourceType": "post",              // "post" | "folder"
   "expiresInDays": 7,                  // default 7; null = permanente; rango 1-365
-  "passphrase": "frase-opcional"       // opcional, 4-256 chars; ausente/null/"" = sin frase
+  "passphrase": "frase-opcional",      // opcional, 4-256 chars; ausente/null/"" = sin frase
+  "recipient": "Laura · Acme",         // opcional: un link por persona, las aperturas quedan a su nombre
+  "remindIfUnopenedHours": 48,         // opcional, 1-336 o null (sin aviso). Default: 48 con recipient y resourceType "post"; si no, sin aviso
+  "renewOnOpen": false                 // opcional; true = cada apertura corre la expiracion a ahora + expiresInDays (tope 90 dias desde la creacion y la expiracion de la key). Requiere expiresInDays
 }
 ```
-Respuesta: `{ token, url, passphraseProtected, ... }`. El `url` se devuelve **CON `/u/`**:
+Respuesta: `{ token, url, passphraseProtected, remindAt, renewOnOpen, ... }` (`remindAt`: ISO o
+`null`; si a esa hora el link sigue sin aperturas, el creador recibe un email, y un DM de Slack
+si lo conecto). El `url` se devuelve **CON `/u/`**:
 `https://out-box.dev/u/<user>/<slug>?share=<token>` (ese prefijo 301-redirige al
 canonico sin `/u/`, preservando el `?share`). Token de folder cascade a descendientes.
 
 #### GET /api/share
 Lista tokens propios. **requireAuth**. Cada token trae `passphraseProtected` (nunca el hash
-ni la frase).
+ni la frase), `recipient`, `title`, `url`, `createdAt`, `expiresAt`, `opened` (bool), `opens`
+(`{ count, firstAt, lastAt }` o `null`), `remindAt` (ISO o `null`) y `renewOnOpen`.
+`?unopened=1` deja solo los activos (ni revocados ni vencidos) que nadie abrio; con
+`&olderThanHours=N`, solo los creados hace mas de N horas ("¿quien no abrio la propuesta?").
 
 > **Passphrase del link.** El visitante la ingresa en el gate HTML (`401` +
 > `x-outbox-passphrase: required`, form POST al mismo path); un cliente la manda en el

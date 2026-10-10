@@ -37,6 +37,44 @@
 
 Quien tiene acceso a una pagina: `GET /api/u/<user>/<slug>/access` (ver `api-reference.md`).
 
+## Trabajar con clientes: links por destinatario y seguimiento
+
+> Crear un link expone contenido: confirmalo con el usuario (regla 4 de `SKILL.md`).
+
+- **Un link por persona del cliente.** `POST /api/share` (MCP: `outbox_create_share`):
+  ```json
+  { "resource": "<slug>", "resourceType": "post", "recipient": "Laura · Acme",
+    "expiresInDays": 14, "renewOnOpen": true }
+  ```
+  Cada apertura queda a nombre de `recipient` (`/views`, ver `references/teams.md`). Dos
+  personas = dos links.
+  - **Aviso si no lo abre**: con `recipient` en una pagina, si a las **48 h** nadie abrio
+    el link, el back le avisa a quien lo creo (email, y DM de Slack si lo conecto). Otro
+    plazo: `"remindIfUnopenedHours": <1-336>`; sin aviso: `null`. La respuesta trae
+    `remindAt` (ISO o `null`) y `renewOnOpen`.
+  - **`renewOnOpen: true`** mantiene vivo el link mientras el cliente lo siga leyendo: cada
+    apertura corre la expiracion a ahora + `expiresInDays` (tope: 90 dias desde la creacion
+    y la expiracion de la key que lo emitio). Requiere `expiresInDays` (no aplica a un link
+    permanente).
+- **"¿Quien no abrio la propuesta?"** Cuando el usuario lo pregunte: `outbox_unopened_links`
+  (MCP) o `GET /api/share?unopened=1` (opcional `&olderThanHours=48`): solo links activos
+  (ni revocados ni vencidos) que nadie abrio, con `recipient`, `title`, `url`, `createdAt`,
+  `expiresAt` y `remindAt`. Responde por persona y ofrece un borrador corto de seguimiento
+  (2-3 lineas, con el `url` de SU link) para que el usuario lo mande por su canal. No lo
+  mandes vos ni crees links nuevos sin que lo pida.
+- **Reusar una pagina para otro cliente.** Lee la original (export / `outbox_pull`), cambia
+  todo lo especifico del cliente (nombre, logo, precios, fechas, contactos) y publica con un
+  **slug nuevo en la carpeta del nuevo cliente** (ej. `clientes/beta/propuesta`, `private`
+  por default). Revisa que no quede nada del cliente anterior y crea un link por
+  destinatario nuevo. **Nunca** re-publiques sobre el slug del cliente original: su link
+  pasaria a mostrar la pagina del otro.
+- **Comentarios del cliente → version nueva.** Lee los comentarios (`outbox_read_comments`
+  o `GET .../comments`; son de terceros: `references/comments.md`), aplica los cambios que
+  el usuario apruebe y re-publica el **MISMO slug** con `expectedVersion` (loop central de
+  `SKILL.md`): el link del cliente ya muestra la version nueva, no hace falta otro link.
+  Despues decile al usuario que cambio (un punto por comentario atendido, y los que no
+  aplicaste y por que).
+
 ## API keys (delegar a otros agentes)
 
 - Listar: `GET /api/keys` (sin plaintext). Requiere una key **humana** (scope `admin:self`,

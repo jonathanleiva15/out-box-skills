@@ -221,7 +221,8 @@ subscripción se asocia al `UserRecord`-org, no a la persona.
   (un link por persona): cada apertura por ese link queda a su nombre aunque no tenga
   cuenta. Un miembro crea links de paginas del org con `owner: "<handle>"`;
   `GET /api/share?user=<org>` y `DELETE /api/share/<token>?user=<org>` para listarlos y
-  revocarlos. Con company key, sin `owner`.
+  revocarlos. Con company key, sin `owner`. Aviso a las 48 h si nadie lo abre, `renewOnOpen`
+  y "¿quien no abrio?": `references/sharing-and-keys.md` ("Trabajar con clientes").
 - **¿Lo abrio el cliente?** `GET /api/u/<user>/<slug>/views` → `{ total, today, receipts,
   firstViewedAt, firstViewer }`. Las vistas del owner y de miembros del org NO cuentan. En
   una pagina publica una vista logueada no queda identificada: para saber QUIEN abrio,
