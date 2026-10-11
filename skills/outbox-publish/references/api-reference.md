@@ -820,16 +820,24 @@ Secret link for non-users (without making the page public). **Scope** `share:u` 
   "resource": "<slug-or-prefix>",
   "resourceType": "post",              // "post" | "folder"
   "expiresInDays": 7,                  // default 7; null = permanent; range 1-365
-  "passphrase": "optional-passphrase"  // optional, 4-256 chars; absent/null/"" = no passphrase
+  "passphrase": "optional-passphrase", // optional, 4-256 chars; absent/null/"" = no passphrase
+  "recipient": "Laura · Acme",         // optional: one link per person, opens are recorded under their name
+  "remindIfUnopenedHours": 48,         // optional, 1-336 or null (no reminder). Default: 48 with recipient and resourceType "post"; otherwise no reminder
+  "renewOnOpen": false                 // optional; true = each open pushes expiry to now + expiresInDays (capped at 90 days from creation and at the key's expiry). Requires expiresInDays
 }
 ```
-Response: `{ token, url, passphraseProtected, ... }`. The `url` is returned **WITH `/u/`**:
+Response: `{ token, url, passphraseProtected, remindAt, renewOnOpen, ... }` (`remindAt`: ISO or
+`null`; if the link still has no opens at that time, the creator gets an email, and a Slack DM
+if they connected Slack). The `url` is returned **WITH `/u/`**:
 `https://out-box.dev/u/<user>/<slug>?share=<token>` (that prefix 301-redirects to the
 canonical one without `/u/`, preserving `?share`). A folder token cascades to descendants.
 
 #### GET /api/share
 Lists your own tokens. **requireAuth**. Each token carries `passphraseProtected` (never the hash
-or the passphrase).
+or the passphrase), `recipient`, `title`, `url`, `createdAt`, `expiresAt`, `opened` (bool), `opens`
+(`{ count, firstAt, lastAt }` or `null`), `remindAt` (ISO or `null`) and `renewOnOpen`.
+`?unopened=1` keeps only active links (not revoked or expired) that nobody opened; with
+`&olderThanHours=N`, only those created more than N hours ago ("who hasn't opened the proposal?").
 
 > **Link passphrase.** The visitor enters it in the HTML gate (`401` +
 > `x-outbox-passphrase: required`, form POST to the same path); a client sends it in the

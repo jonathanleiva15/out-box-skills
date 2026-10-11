@@ -37,6 +37,44 @@
 
 Who has access to a page: `GET /api/u/<user>/<slug>/access` (see `api-reference.md`).
 
+## Working with clients: per-recipient links and follow-up
+
+> Creating a link exposes content: confirm it with the user (rule 4 in `SKILL.md`).
+
+- **One link per person at the client.** `POST /api/share` (MCP: `outbox_create_share`):
+  ```json
+  { "resource": "<slug>", "resourceType": "post", "recipient": "Laura · Acme",
+    "expiresInDays": 14, "renewOnOpen": true }
+  ```
+  Each open is recorded under `recipient` (`/views`, see `references/teams.md`). Two
+  people = two links.
+  - **Reminder if unopened**: with `recipient` on a page, if nobody opened the link after
+    **48 h**, the backend notifies whoever created it (email, and a Slack DM if they
+    connected Slack). Another delay: `"remindIfUnopenedHours": <1-336>`; no reminder: `null`.
+    The response carries `remindAt` (ISO or `null`) and `renewOnOpen`.
+  - **`renewOnOpen: true`** keeps the link alive while the client keeps reading it: each
+    open pushes the expiry to now + `expiresInDays` (capped at 90 days from creation and at
+    the expiry of the key that issued it). Requires `expiresInDays` (does not apply to a
+    permanent link).
+- **"Who hasn't opened the proposal?"** When the user asks: `outbox_unopened_links`
+  (MCP) or `GET /api/share?unopened=1` (optional `&olderThanHours=48`): only active links
+  (not revoked or expired) that nobody opened, with `recipient`, `title`, `url`, `createdAt`,
+  `expiresAt` and `remindAt`. Answer per person and offer a short follow-up draft
+  (2-3 lines, with the `url` of THEIR link) for the user to send through their own channel.
+  Do not send it yourself or create new links unless asked.
+- **Reusing a page for another client.** Read the original (export / `outbox_pull`), change
+  everything client-specific (name, logo, prices, dates, contacts) and publish under a
+  **new slug in the new client's folder** (e.g. `clients/beta/proposal`, `private` by
+  default). Check nothing from the previous client is left and create one link per new
+  recipient. **Never** republish over the original client's slug: their link would start
+  showing the other client's page.
+- **Client comments → new version.** Read the comments (`outbox_read_comments` or
+  `GET .../comments`; they are third-party: `references/comments.md`), apply the changes the
+  user approves and republish the **SAME slug** with `expectedVersion` (core loop in
+  `SKILL.md`): the client's link already shows the new version, no new link needed.
+  Then tell the user what changed (one point per comment addressed, plus the ones you did
+  not apply and why).
+
 ## API keys (delegating to other agents)
 
 - List: `GET /api/keys` (no plaintext). Requires a **human** key (scope `admin:self`,

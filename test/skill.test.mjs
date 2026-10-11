@@ -575,3 +575,30 @@ test('1.10.0 · offering.md: que ofrecer y cuando, sin precios y confirmando lo 
   assert.doesNotMatch(o, /us\$|usd|\$\d/);
   assert.match(flat(section(skill, 'Publishing')), /per-recipient link/);
 });
+
+test('per-recipient links: unopened reminder, renewOnOpen, who has not opened it, reuse and new version', () => {
+  // out-box/worker (2026-10-10): POST /api/share adds remindIfUnopenedHours (48 h by
+  // default with recipient on a page) and renewOnOpen; GET /api/share?unopened=1.
+  const share = flat(section(refs['sharing-and-keys.md'], 'Working with clients'));
+  for (const needle of [
+    'recipient',
+    '48 h',
+    'remindifunopenedhours',
+    'null',
+    'renewonopen: true',
+    'outbox_unopened_links',
+    'get /api/share?unopened=1',
+    'short follow-up draft',
+    "new slug in the new client's folder",
+    "never** republish over the original client's slug",
+    'outbox_read_comments',
+    '**same slug** with `expectedversion`',
+    'references/comments.md',
+  ]) {
+    assert.ok(share.includes(needle), `sharing-and-keys.md §Working with clients missing ${needle}`);
+  }
+  const api = flat(refs['api-reference.md']);
+  for (const needle of ['remindifunopenedhours', 'renewonopen', 'remindat', '?unopened=1', 'olderthanhours', '`opened`']) {
+    assert.ok(api.includes(needle), `api-reference.md missing ${needle}`);
+  }
+});

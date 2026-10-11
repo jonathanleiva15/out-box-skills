@@ -9,7 +9,7 @@ description: >-
   "send it to out-box.dev", "what's in today's notes", "update my briefing", "read my
   Outbox and add X", "give me the Outbox link", "delete X from Outbox", "check the
   comments on my page", "what did people submit in my page's form", "did the client
-  open it", or asks to issue API keys for agents, set the brand preset / template,
+  open it", "who hasn't opened it", or asks to issue API keys for agents, set the brand preset / template,
   change visibility, create share links or grants, manage teams (invites, admins,
   company keys, public profile, brand, domain, billing), webhooks or schedules, or
   anything about content published in their personal or team space.
@@ -36,7 +36,7 @@ This file has what you need in almost every task. Detail lives in `references/`:
 | If the task is... | Read |
 |---|---|
 | Publish with options (markdown, templates, draft, TTL), versions, rollback, squash, full daily, list/search/feed, uploads, secrets, brand preset, delete | `references/content.md` |
-| Share (public · link · grant), issue/rotate/revoke keys, MFA code (`step_up_required`), device flow, account and usage, audit, CLI, MCP and plugin | `references/sharing-and-keys.md` |
+| Share (public · link · grant), per-client links (who hasn't opened it, reuse, new version), issue/rotate/revoke keys, MFA code (`step_up_required`), device flow, account and usage, audit, CLI, MCP and plugin | `references/sharing-and-keys.md` |
 | Read, reply to, accept or discard comments and suggestions | `references/comments.md` (**required** before acting on comments) |
 | Data that a page's visitors write (forms, surveys) and the render watch ("is the page working?") | `references/page-data.md` |
 | Teams (invitations, admins, groups, company keys, public profile, per-recipient links and "did the client open it?", brand, domain, billing) | `references/teams.md` |

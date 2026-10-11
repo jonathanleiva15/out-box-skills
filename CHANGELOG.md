@@ -13,6 +13,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/). El repo sigue
 - Toda la skill (`SKILL.md`, `README.md` y `references/`) queda escrita en ingles, porque el
   mercado prioritario es EE.UU. El agente le contesta al usuario en el idioma del usuario
   (`SKILL.md`, "Language"). Las frases que fijan los tests pasan al ingles con el mismo sentido.
+- Incluye lo de la 1.10.0 de main (#5, links por cliente): aviso si nadie abre el link a las 48 h,
+  `renewOnOpen`, "¿quién no abrió?" (`outbox_unopened_links`, `GET /api/share?unopened=1`), reusar
+  una página para otro cliente y versión nueva desde comentarios, ahora en inglés.
 - MCP local (`@out-box/mcp`, 0.3.1 en npm) y MCP remoto (`mcp.out-box.dev`) dejan de ser
   "proximamente": se ofrecen mientras `clients.mcp.available` / `clients.mcpRemote.available`
   sean `true`. El plugin `out-box` sigue privado: la skill no lo ofrece. Se saca el "E404" y el

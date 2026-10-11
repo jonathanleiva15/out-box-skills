@@ -223,7 +223,8 @@ subscription is tied to the org `UserRecord`, not to the person.
   (one link per person): every open through that link is recorded under their name even if they have no
   account. A member creates links for org pages with `owner: "<handle>"`;
   `GET /api/share?user=<org>` and `DELETE /api/share/<token>?user=<org>` to list and
-  revoke them. With a company key, without `owner`.
+  revoke them. With a company key, without `owner`. Reminder at 48 h if nobody opens it,
+  `renewOnOpen` and "who hasn't opened it?": `references/sharing-and-keys.md` ("Working with clients").
 - **Did the client open it?** `GET /api/u/<user>/<slug>/views` → `{ total, today, track,
   public, receipts, firstViewedAt, firstViewer }` (`receipts`: `{ user, lastSeen, count }`;
   opens through a per-recipient link come as `link:<recipient>`). It works with
