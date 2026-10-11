@@ -179,6 +179,11 @@ subscription is tied to the org `UserRecord`, not to the person.
   by checkout. If it returns `503`, tell the user to request it with "Contact us" on
   `https://out-box.dev/pricing` (it reaches hello@out-box.dev). That form is for the
   human (it has a captcha): do not submit it for them and do not quote prices.
+- **What the Team plan gives**: Pro+ x10 for the whole company (the publish quota and the
+  storage are counted on the org, not per member; live numbers in `tierLimits` of
+  `/api/me` or `capabilities.tiers`) and up to **10 publishers**, owner and pending
+  invitations included. Readers are free. Past that, adding or inviting returns
+  `409 seat_limit` (`contact: "hello@out-box.dev"`): tell the user, do not retry.
 
 **The 2 ways to publish-as-team:**
 

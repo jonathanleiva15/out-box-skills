@@ -66,10 +66,10 @@ function section(md, heading) {
   return md.slice(start, next < 0 ? undefined : next);
 }
 
-test('frontmatter: name, version 1.11.0 y description dentro del limite de 1024 chars', () => {
+test('frontmatter: name, version 1.12.0 y description dentro del limite de 1024 chars', () => {
   const fm = frontmatter(skill);
   assert.equal(field(fm, 'name'), 'outbox-publish');
-  assert.equal(field(fm, 'version'), '1.11.0');
+  assert.equal(field(fm, 'version'), '1.12.0');
   const desc = fm.split(/^description:\s*>-\n/m)[1];
   assert.ok(desc, 'description en bloque >-');
   const text = desc.split('\n').map((l) => l.trim()).join(' ').trim();
@@ -383,7 +383,7 @@ test('decision humana pendiente: la skill no hardcodea el precio del tier unlimi
   for (const [name, md] of Object.entries(allDocs)) {
     assert.doesNotMatch(md, /unlimited[^\n|]*\$\d/i, `${name}: precio de unlimited hardcodeado`);
   }
-  assert.match(refs['api-reference.md'], /version` \(currently \*\*12\*\*/);
+  assert.match(refs['api-reference.md'], /version` \(currently \*\*14\*\*/);
 });
 
 test('revision ronda 3 · el rollback no lista 409 concurrent_update (solo PUT de meta lo emite)', () => {
@@ -433,7 +433,7 @@ test('pasada 2 · model es obligatorio en el primer append de CADA dia UTC (mani
   }
   assert.match(flat(section(skill, 'Daily')), /first append of \*\*each utc day\*\*/);
   assert.match(flat(section(skill, 'Daily')), /always send it/);
-  assert.match(flat(skill), /2\. `model` is required on publish, publish-from-template and the first append of each utc day/);
+  assert.match(flat(skill), /1\. never send `user` or `publishedbylabel` in the body; always send `model`/);
   for (const f of ['content.md', 'api-reference.md']) {
     const r = flat(refs[f]);
     assert.match(r, /first append of \*\*each utc day\*\*/, `${f}: falta "cada dia UTC"`);
@@ -601,4 +601,52 @@ test('per-recipient links: unopened reminder, renewOnOpen, who has not opened it
   for (const needle of ['remindifunopenedhours', 'renewonopen', 'remindat', '?unopened=1', 'olderthanhours', '`opened`']) {
     assert.ok(api.includes(needle), `api-reference.md missing ${needle}`);
   }
+});
+
+test('1.12.0 · errores de limite de plan: fix y upgradeUrl (out-box #48)', () => {
+  assert.match(flat(skill), /tell the user the `fix`/);
+  assert.match(skill, /`upgradeUrl`/);
+  const api = refs['api-reference.md'];
+  assert.match(api, /"upgradeUrl":/);
+  assert.match(api, /"fix":/);
+  assert.match(flat(api), /absent \(not `null`\) on `team`\/`unlimited`/);
+});
+
+test('1.12.0 · Team: Pro+ x10 para la empresa y tope de 10 publicadores (409 seat_limit)', () => {
+  assert.match(skill, /409 seat_limit/);
+  assert.match(refs['api-reference.md'], /\| team \| 300 \| 5000 \| 100 \|/);
+  assert.match(refs['api-reference.md'], /409 seat_limit/);
+  assert.match(refs['teams.md'], /10 publishers/);
+});
+
+test('1.12.0 · formularios: mail al owner al completar o cambiar (out-box #46) y payload first/changed', () => {
+  const pd = flat(refs['page-data.md']);
+  assert.match(pd, /owner gets an email/);
+  assert.match(pd, /field names only, never the values/);
+  assert.match(pd, /`first`/);
+  assert.match(pd, /`changed`/);
+  assert.match(refs['automation.md'], /`form\.submitted`/);
+  assert.match(refs['api-reference.md'], /\| `form\.submitted` \|/);
+});
+
+test('1.12.0 · seguir una pagina y Slack propio, gateados por capabilities', () => {
+  const auto = refs['automation.md'];
+  assert.match(auto, /features\.pageFollows/);
+  assert.match(auto, /features\.slackAlerts/);
+  assert.match(auto, /admin:self/);
+  assert.match(refs['api-reference.md'], /## Following a page and alerts/);
+  assert.match(refs['offering.md'], /features\.slackAlerts/);
+  assert.doesNotMatch(refs['offering.md'], /there are no direct messages to a person/);
+});
+
+test('1.12.0 · onboarding y actualizacion: la skill compara clients.skill.latest con su version', () => {
+  assert.match(skill, /clients\.skill\.latest/);
+  assert.match(skill, /references\/onboarding\.md/);
+  const onb = refs['onboarding.md'];
+  assert.match(onb, /clients\.skill\.latest/);
+  assert.match(flat(onb), /once per conversation/);
+  assert.match(flat(onb), /never block the task/);
+  assert.match(onb, /npx skills add jonathanleiva15\/out-box-skills/);
+  assert.match(flat(onb), /never ask the user to create a key by hand or paste one/);
+  assert.match(flat(onb), /never do that with private data/);
 });

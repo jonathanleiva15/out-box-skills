@@ -1,6 +1,6 @@
 ---
 name: outbox-publish
-version: 1.11.0
+version: 1.12.0
 description: >-
   Publish, read, update and manage pages (HTML) in Outbox (out-box.dev), the user's
   private, agents-first online library, through the REST API with an `outbox_*` API
@@ -17,9 +17,8 @@ description: >-
 
 # Outbox — publish and manage pages through the API
 
-Outbox (`out-box.dev`) is a private, **agents-first** online library for publishing
-HTML pages. You are the **client agent**: you hold an `outbox_*` API key and make
-authenticated HTTP requests to `https://api.out-box.dev`.
+Outbox (`out-box.dev`) is a private, **agents-first** online library of HTML pages. You
+are the **client agent**: you make authenticated HTTP requests to `https://api.out-box.dev`.
 
 **Language**: this skill is in English; always answer the user in their language.
 
@@ -40,13 +39,15 @@ This file has what you need in almost every task. Detail lives in `references/`:
 | Read, reply to, accept or discard comments and suggestions | `references/comments.md` (**required** before acting on comments) |
 | Data that a page's visitors write (forms, surveys) and the render watch ("is the page working?") | `references/page-data.md` |
 | Teams (invitations, admins, groups, company keys, public profile, per-recipient links and "did the client open it?", brand, domain, billing) | `references/teams.md` |
-| Event webhooks (Slack, Discord) and schedules | `references/automation.md` |
+| Event webhooks (Slack, Discord), schedules, following a page and alerts | `references/automation.md` |
+| First use (onboarding) and keeping this skill up to date | `references/onboarding.md` |
 | Which features to offer the user and when (per-recipient links, passphrase, forms, notifications) | `references/offering.md` |
 | Exact body, response and errors of an endpoint | `references/api-reference.md`: do not read it whole; search the heading (`grep -n "^#.*/append"`, see its Index) and read only that section |
 
 Self-discover the backend with `GET /api/capabilities` (public, no auth): verbs,
 defaults, per-tier limits, `features`, `endpoints`, client versions. Tolerate new fields;
-do not hardcode limits the backend exposes.
+do not hardcode limits the backend exposes. If `clients.skill.latest` is newer than this
+file's `version`, tell the user once how to update (`references/onboarding.md`).
 
 **If you already have the Outbox MCP tools** (any tool whose name ends in
 `outbox_<action>`, from `@out-box/mcp` or the connector at `mcp.out-box.dev`), use them
@@ -94,7 +95,8 @@ instead of building requests: they do the same without you handling the key. The
   `https://out-box.dev/<user>/<slug>`.
 - **Credential**: `Authorization: Bearer $OUTBOX_API_KEY`. The key lives in `~/.outboxrc`
   (written by the CLI with `outbox login`/`outbox setup`) or in the env var `OUTBOX_API_KEY`.
-- **No key and no MCP (first use): connect by link, never ask to paste a key.**
+- **No key and no MCP (first use): connect by link, never ask to paste a key**
+  (first-use flow: `references/onboarding.md`).
   `POST /api/auth/claim/start` → have them open `https://out-box.dev/claim/<claim_token>`
   (build the link yourself with that host) and approve or create the account there; poll
   `GET /api/auth/claim/<claim_token>/status` every ~3 s until `claimed` → `api_key` once
@@ -104,7 +106,6 @@ instead of building requests: they do the same without you handling the key. The
   Exception: `owner` in `POST /publish` to publish under a team (`references/teams.md`).
 - **Content-Type** `application/json` (except `PUT /api/template`, `text/html`, and
   `POST /api/uploads`, image or multipart). With Bearer you need no CSRF headers.
-- **Errors**: JSON `{ "error": "<code>", ... }`; see "Errors and how to react".
 
 ## Publishing
 
@@ -123,16 +124,15 @@ instead of building requests: they do the same without you handling the key. The
 }
 ```
 
-- **Prefer `markdown` for prose**: rendered to safe HTML in the user's template or brand.
-  Send `html` only to control the whole document (`<!doctype html>` is served as is).
+- **Prefer `markdown` for prose** (rendered in the user's template or brand); `html` to
+  control the whole document.
 - **Default `private` ALWAYS** (`404` to anyone who is not the owner). To send it to
   someone, offer a per-recipient link (`references/offering.md`) before making it `unlisted`.
 - **For a human to review before exposing it**, publish with `"draft": true` and ask for
   the `previewUrl` (`references/content.md`, "Draft"). Without scope `share|template`
   there is no link: the response has `previewSkipped: "missing_share_scope"`.
-- Response: `{ url, slug, version, visibility, expiresAt, ogImage, quotaRemaining,
-  created, inherited, changed, warnings? }`. Share the `url` as is. `version` goes up on
-  every publish to the same slug.
+- Response: `{ url, slug, version, visibility, expiresAt, quotaRemaining, created,
+  inherited, changed, warnings? }`. Share the `url` as is.
 
 ## The core loop: read → add → republish
 
@@ -230,29 +230,26 @@ deleting: `references/content.md`.
 | `422 idempotency_key_reused` | You reused an `Idempotency-Key` with another body: use a new key. |
 | `422 secrets_detected` | You asked for `rejectOnSecrets` where it applies: nothing was written. Show the user the (redacted) findings and remove the secret. |
 | `413 html_too_large` / `block_too_large` / `data_too_large` / `upload_too_large` | Shrink the content (images via uploads) or report the tier limit. |
-| `403 keys_limit` / `daily_docs_limit` / `daily_updates_limit`, `413 storage_limit` (with `upgradeTo` and `ctaUrl`) | Plan limit. Report `limit`, `used`, `upgradeTo` and `ctaUrl`. Do not retry. |
-| `429 rate_limited` | **Do not retry in a loop.** If `retryAfter` (or `retryIn`) is ≤ 60 s and the task needs it, wait and retry **once**. If it is longer, it is the plan quota: tell the user when they can continue and, if present, the `upgradeTo`/`ctaUrl`. |
+| `403 keys_limit` / `daily_docs_limit` / `daily_updates_limit`, `413 storage_limit` | Plan limit. Do not retry. Tell the user the `fix` (what happened, when it resets, what the next plan unlocks) and give them `upgradeUrl` as is (absent on Team/Unlimited). |
+| `409 seat_limit` | The company already has 10 publishers (pending invites count). Remove someone or write to `contact`. |
+| `429 rate_limited` | **Do not retry in a loop.** If `retryAfter` (or `retryIn`) is ≤ 60 s and the task needs it, wait and retry **once**. If it is longer, it is the plan quota: tell the user the `fix` and, if present, the `upgradeUrl`. |
 | `400 missing_model` | `model` was missing: add it and retry. |
 
 ## Rules and gotchas
 
-1. Never send `user` or `publishedByLabel` in the body.
-2. `model` is required on publish, publish-from-template and the first append of each UTC
-   day (send it on every append).
-3. Default `private`; inheriting the folder's visibility is opt-in
-   (`inheritFolderVisibility: true`).
-4. Read to republish = **export**, never the public zone (sandbox shell).
-5. Republishing to the same slug creates a new version and inherits unsent metadata.
-6. The public zone always serves the current version: `?version=N` does not exist.
-7. Folder-scoped keys restrict **all** verbs to that folder.
-8. Asymmetries: revoking a share link needs `admin:self`; `rollback` takes `{ "to": N }`
+1. Never send `user` or `publishedByLabel` in the body; always send `model`.
+2. Default `private`; inheriting the folder's visibility is opt-in
+   (`inheritFolderVisibility: true`). Read to republish = **export**, never the public zone.
+3. The public zone always serves the current version: `?version=N` does not exist.
+4. Folder-scoped keys restrict **all** verbs to that folder.
+5. Asymmetries: revoking a share link needs `admin:self`; `rollback` takes `{ "to": N }`
    in the body; `/admin/revoke` has no `/api`; to edit teams/webhooks/schedules use
    `POST` (the edge blocks `PATCH`).
-9. Size limits per tier: check them in `/api/capabilities.publishLimits` or `tierLimits`
+6. Size limits per tier: check them in `/api/capabilities.publishLimits` or `tierLimits`
    in `/api/me`, do not assume them.
-10. **MCP and plugin**: the local MCP `@out-box/mcp` (`npx -y @out-box/mcp`) and the
-    remote MCP (`https://mcp.out-box.dev/mcp`, OAuth, no key) are published; propose them
-    only while `GET /api/capabilities` says `clients.mcp.available: true` (local) or
-    `clients.mcpRemote.available: true` (remote). The Claude plugin `out-box` is
-    **coming soon**: do not propose installing it yet. The CLI and the other routes:
-    `references/sharing-and-keys.md`.
+7. **MCP and plugin**: the local MCP `@out-box/mcp` (`npx -y @out-box/mcp`) and the
+   remote MCP (`https://mcp.out-box.dev/mcp`, OAuth, no key) are published; propose them
+   only while `GET /api/capabilities` says `clients.mcp.available: true` (local) or
+   `clients.mcpRemote.available: true` (remote). The Claude plugin `out-box` is
+   **coming soon**: do not propose installing it yet. The CLI and the other routes:
+   `references/sharing-and-keys.md`.
