@@ -6,6 +6,21 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/). El repo sigue
 
 ## [Unreleased]
 
+### `outbox-publish` 1.10.0 · seguimiento de links por cliente (2026-10-10)
+
+- `references/sharing-and-keys.md`, seccion nueva "Trabajar con clientes": un link por
+  persona con `recipient`; aviso a las 48 h si nadie lo abre (`remindIfUnopenedHours`,
+  1-336 o `null`); `renewOnOpen` mantiene vivo el link mientras el cliente lo lee;
+  "¿quien no abrio la propuesta?" con `outbox_unopened_links` / `GET /api/share?unopened=1`
+  y un borrador de seguimiento; reusar una pagina para otro cliente (slug nuevo en su
+  carpeta, nunca pisar la del original); comentarios del cliente → mismo slug con
+  `expectedVersion` y resumen de lo que cambio.
+- `references/api-reference.md`: `POST /api/share` con `recipient`, `remindIfUnopenedHours`
+  y `renewOnOpen` (respuesta con `remindAt`); `GET /api/share` con `opened`, `opens`,
+  `remindAt`, `renewOnOpen`, `?unopened=1` y `olderThanHours`.
+- `references/teams.md` remite a la seccion nueva; `SKILL.md`: trigger e indice.
+- Test de regresion en `test/skill.test.mjs`.
+
 ### `outbox-publish` 1.9.0 · conexion por link (2026-10-02)
 
 - `SKILL.md`: sin key ni MCP, el agente conecta por link (`claim/start` →

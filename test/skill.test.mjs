@@ -66,10 +66,10 @@ function section(md, heading) {
   return md.slice(start, next < 0 ? undefined : next);
 }
 
-test('frontmatter: name, version 1.9.0 y description dentro del limite de 1024 chars', () => {
+test('frontmatter: name, version 1.10.0 y description dentro del limite de 1024 chars', () => {
   const fm = frontmatter(skill);
   assert.equal(field(fm, 'name'), 'outbox-publish');
-  assert.equal(field(fm, 'version'), '1.9.0');
+  assert.equal(field(fm, 'version'), '1.10.0');
   const desc = fm.split(/^description:\s*>-\n/m)[1];
   assert.ok(desc, 'description en bloque >-');
   const text = desc.split('\n').map((l) => l.trim()).join(' ').trim();
@@ -523,4 +523,31 @@ test('gate ronda 4 · daily: visibility/title solo al crear el dia, createOnly y
     }
   }
   assert.match(flat(refs['api-reference.md']), /requestid/);
+});
+
+test('1.10.0 · links por destinatario: aviso si no se abre, renewOnOpen, ¿quien no abrio?, reusar y version nueva', () => {
+  // out-box/worker (2026-10-10): POST /api/share suma remindIfUnopenedHours (48 h por
+  // default con recipient en una pagina) y renewOnOpen; GET /api/share?unopened=1.
+  const share = flat(section(refs['sharing-and-keys.md'], 'Trabajar con clientes'));
+  for (const needle of [
+    'recipient',
+    '48 h',
+    'remindifunopenedhours',
+    'null',
+    'renewonopen: true',
+    'outbox_unopened_links',
+    'get /api/share?unopened=1',
+    'borrador corto de seguimiento',
+    'slug nuevo en la carpeta del nuevo cliente',
+    'nunca** re-publiques sobre el slug del cliente original',
+    'outbox_read_comments',
+    '**mismo slug** con `expectedversion`',
+    'references/comments.md',
+  ]) {
+    assert.ok(share.includes(needle), `sharing-and-keys.md §Trabajar con clientes sin ${needle}`);
+  }
+  const api = flat(refs['api-reference.md']);
+  for (const needle of ['remindifunopenedhours', 'renewonopen', 'remindat', '?unopened=1', 'olderthanhours', '`opened`']) {
+    assert.ok(api.includes(needle), `api-reference.md sin ${needle}`);
+  }
 });

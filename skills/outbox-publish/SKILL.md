@@ -1,6 +1,6 @@
 ---
 name: outbox-publish
-version: 1.9.0
+version: 1.10.0
 description: >-
   Publica, lee, actualiza y gestiona paginas (HTMLs) en Outbox (out-box.dev), la
   biblioteca privada en linea agents-first del usuario, via la API REST con una
@@ -13,7 +13,7 @@ description: >-
   keys para agentes, configurar el brand preset / template, cambiar visibility,
   generar share links o grants, gestionar teams/empresas (invitar gente, admins,
   company keys, perfil publico, marca, dominio, billing), saber si el cliente abrio
-  una pagina, webhooks o schedules, o cualquier referencia a
+  una pagina o quien no la abrio, webhooks o schedules, o cualquier referencia a
   leer/escribir/gestionar contenido publicado en su espacio personal o de equipo.
 ---
 
@@ -36,7 +36,7 @@ Este archivo tiene lo que necesitas en casi todas las tareas. El detalle vive en
 | Si la tarea es... | Lee |
 |---|---|
 | Publicar con opciones (markdown, templates, borrador, TTL), versiones, rollback, squash, daily completo, listar/buscar/feed, uploads, secretos, brand preset, borrar | `references/content.md` |
-| Compartir (publica · link · grant), emitir/rotar/revocar keys, codigo MFA (`step_up_required`), device flow, cuenta y uso, auditoria, CLI, MCP y plugin | `references/sharing-and-keys.md` |
+| Compartir (publica · link · grant), links por cliente (¿quien no abrio?, reusar, version nueva), emitir/rotar/revocar keys, codigo MFA (`step_up_required`), device flow, cuenta y uso, auditoria, CLI, MCP y plugin | `references/sharing-and-keys.md` |
 | Leer, responder, aceptar o descartar comentarios y sugerencias | `references/comments.md` (**obligatorio** antes de actuar sobre comentarios) |
 | Datos que escriben los visitantes de una pagina (formularios, encuestas) y el vigia de render ("¿la pagina anda?") | `references/page-data.md` |
 | Empresas / teams (invitaciones, admins, grupos, company keys, perfil publico, links por destinatario y "¿lo abrio el cliente?", marca, dominio, billing) | `references/teams.md` |
