@@ -1,6 +1,6 @@
 ---
 name: outbox-publish
-version: 1.12.0
+version: 1.13.0
 description: >-
   Publish, read, update and manage pages (HTML) in Outbox (out-box.dev), the user's
   private, agents-first online library, through the REST API with an `outbox_*` API
@@ -43,6 +43,7 @@ This file has what you need in almost every task. Detail lives in `references/`:
 | First use (onboarding) and keeping this skill up to date | `references/onboarding.md` |
 | Which features to offer the user and when (per-recipient links, passphrase, forms, notifications) | `references/offering.md` |
 | Exact body, response and errors of an endpoint | `references/api-reference.md`: do not read it whole; search the heading (`grep -n "^#.*/append"`, see its Index) and read only that section |
+| No key, no account: publish anonymously (72 h, give `claimUrl`) | api-reference § "Without an account" |
 
 Self-discover the backend with `GET /api/capabilities` (public, no auth): verbs,
 defaults, per-tier limits, `features`, `endpoints`, client versions. Tolerate new fields;

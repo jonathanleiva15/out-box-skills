@@ -107,6 +107,47 @@ The user gets/issues the key from out-box.dev, the `outbox` CLI
 the device flow (`POST /api/auth/claim/start` → `user_code` → `/resolve`) lets you
 get a key from scratch without a local browser.
 
+## Without an account
+
+An agent with no key can still publish a page that lasts **72 hours**, when the backend
+has it enabled (`GET /api/capabilities` → `features.anonPublish: true`; otherwise
+`403 anon_publish_disabled`):
+
+```bash
+curl -sS -X POST https://api.out-box.dev/api/anon/publish \
+  -H 'content-type: application/json' \
+  -d '{"markdown": "# Trip notes\n\nDay 1: ...", "title": "Trip notes"}'
+```
+
+`html` or `markdown` (one of the two), `title` optional. Raw `text/html`, `text/markdown`
+and `multipart/form-data` with `file` also work. The response (`201`):
+
+```json
+{
+  "id": "k3x9...",
+  "url": "https://out-box.dev/p/k3x9...",
+  "expiresAt": "2026-10-14T12:00:00.000Z",
+  "ttlSeconds": 259200,
+  "claimToken": "anc_...",
+  "claimUrl": "https://out-box.dev/claim/page#k3x9....anc_..."
+}
+```
+
+- Anyone with the `url` can open the page until `expiresAt` (72 h); it is not in any library.
+- Limits: 2 MiB of HTML or 256 KiB of markdown (`413`), 2 per hour and 3 per day per IP,
+  5 per day per network (`429` with `Retry-After`: wait, do not retry in a loop).
+  `503 anon_paused` means the global daily cap was reached or publishing is paused.
+- The page cannot send data anywhere: images must be inline `data:` URIs, and scripts,
+  styles and fonts load only from cdnjs, jsDelivr, unpkg or Google Fonts.
+- **Give the human the `claimUrl`, not the `claimToken`**: opening it lets them save the page
+  to their account before it expires. The token is in the URL fragment; do not paste it
+  anywhere else.
+- **Never publish private data without an account**: no personal data, client data,
+  credentials or anything the user would not post on a public link.
+- With a key, publish to the library with `POST /publish` instead. In the local MCP this is
+  the `outbox_publish_anonymous` tool, listed only when the server has no key.
+  Endpoint details: `references/api-reference.md`, "Without an account".
+
 ## Links
 
 - Product: https://out-box.dev
