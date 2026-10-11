@@ -43,7 +43,7 @@ This file has what you need in almost every task. Detail lives in `references/`:
 | Event webhooks (Slack, Discord) and schedules | `references/automation.md` |
 | Which features to offer the user and when (per-recipient links, passphrase, forms, notifications) | `references/offering.md` |
 | Exact body, response and errors of an endpoint | `references/api-reference.md`: do not read it whole; search the heading (`grep -n "^#.*/append"`, see its Index) and read only that section |
-| No key, no account: publish anonymously (72 h, hand over `claimUrl`) | api-reference § "Without an account" |
+| No key, no account: publish anonymously (72 h, give `claimUrl`) | api-reference § "Without an account" |
 
 Self-discover the backend with `GET /api/capabilities` (public, no auth): verbs,
 defaults, per-tier limits, `features`, `endpoints`, client versions. Tolerate new fields;
