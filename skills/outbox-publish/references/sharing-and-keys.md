@@ -224,8 +224,10 @@ account and usage, list, search, recent, read (`outbox_pull`, `outbox_export`,
 `outbox_versions`, `outbox_get_blocks`), publish, append, uploads, visibility, go-live,
 rollback, delete, comments and suggestions, the viewer, who opened a page
 (`outbox_page_views`), page data (`outbox_page_data`) and render watch
-(`outbox_render_status`). It does not create share links, grants or keys: for those,
-use out-box.dev, the CLI or this skill.
+(`outbox_render_status`) and who has not opened their links (`outbox_unopened_links`).
+If the user granted the connector "share" (`outbox:share`, together with read), it also
+creates and lists per-recipient links (`outbox_create_share`, `outbox_list_shares`). It does
+not revoke links or create grants or keys: for those, use out-box.dev, the CLI or this skill.
 
 ### Detecting the CLI
 
