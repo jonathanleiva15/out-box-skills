@@ -235,5 +235,6 @@ skill are distributed separately. If it is not there:
 - `npx skills add jonathanleiva15/out-box-skills` for the skill.
 
 With the CLI you get `outbox init` (auth + style + welcome page + skill) and
-`outbox update` / `outbox skill status` to keep the CLI and skill up to date. If you only work
+`outbox update` / `outbox skill status` to keep the CLI and skill up to date (how to update
+each install route: `onboarding.md`). If you only work
 over HTTP you do not need it.

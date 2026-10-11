@@ -42,6 +42,7 @@ out-box-skills/
             ├── teams.md             (empresas / orgs)
             ├── automation.md        (webhooks y schedules)
             ├── offering.md          (que funciones ofrecerle al usuario y cuando)
+            ├── onboarding.md        (primer uso y aviso de version nueva de la skill)
             └── api-reference.md     (referencia endpoint por endpoint)
 ```
 
@@ -77,8 +78,8 @@ npx skills add jonathanleiva15/out-box-skills
 
 ## Version
 
-- Skill `outbox-publish`: **1.12.0** (ver `version` en el frontmatter de `SKILL.md`, fuente de verdad).
-- Repo (`package.json`): **0.6.0**.
+- Skill `outbox-publish`: **1.13.0** (ver `version` en el frontmatter de `SKILL.md`, fuente de verdad).
+- Repo (`package.json`): **0.7.0**.
 - El manifest `skills.sh.json` declara el grouping "Outbox" con la skill `outbox-publish`.
 
 ## Las vias de usar Outbox

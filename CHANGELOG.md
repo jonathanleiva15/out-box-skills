@@ -6,20 +6,48 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/). El repo sigue
 
 ## [Unreleased]
 
-## [0.6.0] · 2026-10-11
+## [0.7.0] · 2026-10-11
 
-### `outbox-publish` 1.12.0 · publicar sin cuenta (2026-10-11)
+### `outbox-publish` 1.13.0 · publicar sin cuenta (2026-10-11)
 
 - `README.md`: seccion "Without an account" con el `curl` a `POST /api/anon/publish`, el JSON
   de respuesta (`url`, `expiresAt`, `ttlSeconds`, `claimToken`, `claimUrl`), los limites
-  (2 MiB de HTML o 256 KiB de markdown, 5 por hora y 20 por dia por IP mas el tope global,
+  (2 MiB de HTML o 256 KiB de markdown, 2 por hora y 3 por dia por IP y 5 por dia por red,
   `429` con `Retry-After`, `503 anon_paused`), las 72 h y dos reglas: pasarle al humano el
   `claimUrl` y no el `claimToken`, y nunca publicar sin cuenta contenido con datos privados.
   Menciona `outbox_publish_anonymous` del MCP local (0.4.0, solo sin key).
 - `references/api-reference.md`: seccion "Without an account" (con su fila en el Index):
   `POST /api/anon/publish` (JSON, `text/html`, `text/markdown` y multipart), errores,
   peek `GET /api/anon/<id>`, `POST /api/anon/<id>/delete`, `POST /api/anon/claim` y los
-  estados de `/p/<id>`. Gateado por `features.anonPublish` (hoy apagado en el back).
+  estados de `/p/<id>`. Gateado por `features.anonPublish` (prendido con tope bajo en out-box #47).
+
+## [0.6.0] · 2026-10-11
+
+### `outbox-publish` 1.12.0 · lo nuevo del back, onboarding y aviso de version (2026-10-11)
+
+- Errores de limite de plan (out-box #48): el agente le pasa al humano el `fix` del back (que
+  paso, cuando se resetea y que desbloquea el plan siguiente) y el `upgradeUrl` tal cual
+  (`SKILL.md`, tabla de errores; `api-reference.md`, forma de los limites). Antes solo
+  nombraba `upgradeTo`/`ctaUrl`.
+- Team (out-box #40 y #42): la fila `team` de la tabla de limites pasa a Pro+ x10 para toda
+  la empresa (300/h, 5.000/dia, 100 GB) y se documenta el tope de 10 publicadores con
+  `409 seat_limit` (`SKILL.md`, `api-reference.md`, `teams.md`).
+- Formularios (out-box #46): el owner recibe un mail cuando completan el formulario y cuando
+  lo vuelven a mandar con cambios (solo nombres de campo, categoria `opens`, tambien por
+  Slack si lo conecto). El webhook `form.submitted` trae `first` y `changed`
+  (`page-data.md`, `api-reference.md`). Faltaban `page.first_viewed` y `form.submitted` en el
+  catalogo de webhooks de `automation.md` y de la tabla de eventos.
+- Seguir una pagina y Slack propio (out-box #32, capabilities v13): seccion nueva en
+  `automation.md` y `api-reference.md` ("Following a page and alerts"), gateadas por
+  `features.pageFollows` y `features.slackAlerts`. `offering.md` deja de decir que no hay
+  mensajes directos a una persona.
+- Primer uso y actualizacion (`references/onboarding.md`, nuevo): orden para detectar MCP,
+  key o nada; onboarding en un solo mensaje; y la skill ahora compara `clients.skill.latest`
+  con su `version` y avisa una vez por conversacion como actualizar segun como se instalo
+  (skills.sh, CLI, subida a Claude). `README.md` suma "Updating".
+- `api-reference.md`: capabilities version 14.
+- `SKILL.md`: reglas 1 a 5 de "Rules and gotchas" condensadas en 2 (repetian el cuerpo) para
+  hacer lugar dentro del presupuesto de 18 KB.
 
 ## [0.5.0] · 2026-10-09
 

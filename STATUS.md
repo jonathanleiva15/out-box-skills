@@ -9,8 +9,8 @@
 
 ## Estado actual
 
-- Skill **`outbox-publish` 1.12.0** (2026-10-11: seccion "Without an account" en README y api-reference, drafts anonimos de 72 h, todavia apagados en el back; 1.11.0, 2026-10-09: toda la skill en ingles, MCP y remoto publicados, aperturas y Team por Contact us; 1.10.0: `references/offering.md`, que ofrecer y cuando; 2026-10-01: Empresas v3 en `references/teams.md`; 1.7.0 local, 2026-09-30; GitHub `main` en 1.9.0) — instalable via skills.sh
-  (`npx skills add jonathanleiva15/out-box-skills`). Repo `package.json` 0.6.0.
+- Skill **`outbox-publish` 1.13.0** (2026-10-11: seccion "Without an account" en README y api-reference, drafts anonimos de 72 h; 1.12.0, 2026-10-11: fix/upgradeUrl en limites, Team Pro+ x10 y `seat_limit`, mail de formularios, seguir paginas, `references/onboarding.md` con el aviso de version nueva; 1.11.0, 2026-10-09: toda la skill en ingles, MCP y remoto publicados, aperturas y Team por Contact us; 1.10.0: `references/offering.md`, que ofrecer y cuando; 2026-10-01: Empresas v3 en `references/teams.md`; 1.7.0 local, 2026-09-30; GitHub `main` en 1.9.0) — instalable via skills.sh
+  (`npx skills add jonathanleiva15/out-box-skills`). Repo `package.json` 0.7.0.
 - 1.7.0 (ronda 3, 2026-09-30): la skill queda alineada con el worker de la ronda 3:
   `409 version_conflict` con `currentVersion`/`currentEtag` e `If-Match` opaco,
   `Idempotency-Key` real (replay, `idempotency_key_reused`, `idempotency_in_progress`),
@@ -48,8 +48,12 @@
 
 ## Pendientes
 
-- Al mergear a `main`, subir `capabilities.clients.skill.latest` en el worker (hoy `1.9.0`)
-  a la version mergeada (1.10.0 o 1.11.0), para que `outbox skill update` detecte el bump.
+- Al mergear a `main`, subir `capabilities.clients.skill.latest` en el worker (hoy `1.11.0`)
+  a la version mergeada (1.12.0) y deployar el worker: desde 1.12.0 la propia skill compara
+  ese valor con su `version` y le avisa al usuario (`references/onboarding.md`). Si no se sube,
+  nadie se entera de la version nueva.
+- Las copias subidas a Claude (claude.ai / escritorio) no se actualizan solas; hoy no hay un zip
+  descargable de la skill (seria un asset de release o una ruta del sitio).
 - **Drift a vigilar** (codigo del worker sin deployar; re-sincronizar si cambia):
   - ~~`secretScan.appliesTo` = `['dailyAppend']`~~: el critico cableo publish y
     publish-from-template y actualizo la skill (regla 5, `content.md`, `api-reference.md`).
