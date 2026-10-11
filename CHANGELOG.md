@@ -6,20 +6,42 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/). El repo sigue
 
 ## [Unreleased]
 
-### `outbox-publish` 1.10.0 · seguimiento de links por cliente (2026-10-10)
+## [0.5.0] · 2026-10-09
 
-- `references/sharing-and-keys.md`, seccion nueva "Trabajar con clientes": un link por
-  persona con `recipient`; aviso a las 48 h si nadie lo abre (`remindIfUnopenedHours`,
-  1-336 o `null`); `renewOnOpen` mantiene vivo el link mientras el cliente lo lee;
-  "¿quien no abrio la propuesta?" con `outbox_unopened_links` / `GET /api/share?unopened=1`
-  y un borrador de seguimiento; reusar una pagina para otro cliente (slug nuevo en su
-  carpeta, nunca pisar la del original); comentarios del cliente → mismo slug con
-  `expectedVersion` y resumen de lo que cambio.
-- `references/api-reference.md`: `POST /api/share` con `recipient`, `remindIfUnopenedHours`
-  y `renewOnOpen` (respuesta con `remindAt`); `GET /api/share` con `opened`, `opens`,
-  `remindAt`, `renewOnOpen`, `?unopened=1` y `olderThanHours`.
-- `references/teams.md` remite a la seccion nueva; `SKILL.md`: trigger e indice.
-- Test de regresion en `test/skill.test.mjs`.
+### `outbox-publish` 1.11.0 · la skill pasa al ingles y se pone al dia (2026-10-09)
+
+- Toda la skill (`SKILL.md`, `README.md` y `references/`) queda escrita en ingles, porque el
+  mercado prioritario es EE.UU. El agente le contesta al usuario en el idioma del usuario
+  (`SKILL.md`, "Language"). Las frases que fijan los tests pasan al ingles con el mismo sentido.
+- Incluye lo de la 1.10.0 de main (#5, links por cliente): aviso si nadie abre el link a las 48 h,
+  `renewOnOpen`, "¿quién no abrió?" (`outbox_unopened_links`, `GET /api/share?unopened=1`), reusar
+  una página para otro cliente y versión nueva desde comentarios, ahora en inglés.
+- MCP local (`@out-box/mcp`, 0.3.1 en npm) y MCP remoto (`mcp.out-box.dev`) dejan de ser
+  "proximamente": se ofrecen mientras `clients.mcp.available` / `clients.mcpRemote.available`
+  sean `true`. El plugin `out-box` sigue privado: la skill no lo ofrece. Se saca el "E404" y el
+  "~60 tools".
+- Las tools del MCP se nombran por sufijo (`outbox_<action>`): conectado como connector el
+  prefijo cambia (por ejemplo `mcp__OUT-BOX__outbox_publish`).
+- Toolsets por default del MCP local: `core`, `comments` y `sharing`. Lo que expone el remoto,
+  al dia: aperturas (`outbox_page_views`), datos de pagina (`outbox_page_data`), vigia de
+  render (`outbox_render_status`), borrar, rollback, go-live y uploads; no crea links ni keys.
+- Aperturas (`references/teams.md`, `SKILL.md`): verbo de solo lectura `views` (lo traen las
+  agent keys nuevas), `/views` tambien con una key que puede leer la pagina, `receipts` con
+  `link:<recipient>`, `opens` por link en `GET /api/share`, mail de apertura con baja por
+  `POST /api/me/email-prefs { "opens": false }`, CLI `outbox opens` y `outbox share --recipient`.
+- Team: el checkout sigue en early access; el plan se pide con "Contact us" en
+  `out-box.dev/pricing` (sin precios en la skill).
+- `api-reference.md`: seccion de `GET /api/u/<user>/<slug>/views` y version de capabilities 12.
+
+### `outbox-publish` 1.10.0 · que ofrecer y cuando (2026-10-09)
+
+- `references/offering.md` (nuevo): momentos en los que el agente ofrece, en una linea y sin
+  ejecutar sin confirmacion, funciones que el usuario no suele pedir: link por destinatario
+  (con el mail de apertura), frase y vencimiento, borrador, `/views`, capa de datos,
+  webhooks a Slack, brand preset, Empresas y daily. Antes la skill las documentaba pero solo
+  las usaba si el usuario las nombraba.
+- `SKILL.md`: fila nueva en el indice y, al compartir con alguien, ofrecer un link por
+  destinatario antes que volver la pagina `unlisted`.
 
 ### `outbox-publish` 1.9.0 · conexion por link (2026-10-02)
 

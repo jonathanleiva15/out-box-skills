@@ -41,6 +41,7 @@ out-box-skills/
             ├── page-data.md         (datos de visitantes de una pagina + vigia de render)
             ├── teams.md             (empresas / orgs)
             ├── automation.md        (webhooks y schedules)
+            ├── offering.md          (que funciones ofrecerle al usuario y cuando)
             └── api-reference.md     (referencia endpoint por endpoint)
 ```
 
@@ -57,9 +58,12 @@ out-box-skills/
   (`.github/workflows/ci.yml`) lo corre en cada push a `main` y cada PR.
 - **`references/api-reference.md`**: headings con la ruta en markdown plano (`<user>` entre
   backticks, nunca `&lt;user&gt;`) y toda seccion `## ` nueva va tambien en su Indice.
-- **Lo que no esta publicado se marca "proximamente"** y se gatea por `capabilities`
-  (`clients.mcp.available`, `clients.mcpRemote.available`). Nunca des por disponible el MCP
-  remoto ni el plugin de Claude antes de que el back lo anuncie.
+- **La skill se escribe en ingles** (mercado prioritario: EE.UU.; desde 1.11.0). El agente
+  le contesta al usuario en su idioma. Este AGENTS.md, STATUS y CHANGELOG siguen en espanol.
+- **Lo que no esta publicado se marca "coming soon"** y lo publicado se gatea por
+  `capabilities` (`clients.mcp.available`, `clients.mcpRemote.available`). Hoy el MCP local
+  y el remoto estan publicados; el plugin de Claude `out-box` no (repo privado, sin
+  marketplace): la skill no lo ofrece hasta que salga.
 - **Precios**: no hardcodear el precio de ningun tier (hay decisiones de pricing
   pendientes); remitir a `https://out-box.dev/pricing`.
 
@@ -73,22 +77,20 @@ npx skills add jonathanleiva15/out-box-skills
 
 ## Version
 
-- Skill `outbox-publish`: **1.10.0** (ver `version` en el frontmatter de `SKILL.md`, fuente de verdad).
-- Repo (`package.json`): **0.4.0**.
+- Skill `outbox-publish`: **1.11.0** (ver `version` en el frontmatter de `SKILL.md`, fuente de verdad).
+- Repo (`package.json`): **0.5.0**.
 - El manifest `skills.sh.json` declara el grouping "Outbox" con la skill `outbox-publish`.
 
 ## Las vias de usar Outbox
 
 Esta skill es una de tres formas equivalentes (misma API key, mismo backend), mas el
-MCP remoto con OAuth y el plugin de Claude `out-box` (repo `out-box-plugin`, trae su
-propia skill MCP-first `out-box:outbox`), ambos proximamente:
+MCP remoto con OAuth (`mcp.out-box.dev`, en prod) y el plugin de Claude `out-box` (repo
+`out-box-plugin`, privado, trae su propia skill MCP-first `out-box:outbox`, ya en ingles):
 
 - **CLI** (`outbox ...`)
 - **Skill** `outbox-publish` (este repo)
-- **MCP** (`@out-box/mcp`, ~60 tools; todavia no publicado en npm). Nota interna: el owner lo
-  corre desde el repo privado `out-box-mcp`. No documentar ese camino en la skill (es publica
-  via skills.sh); la skill remite a `capabilities.clients.mcp.available`. No hardcodear el
-  numero exacto de tools.
+- **MCP** (`@out-box/mcp`, publicado en npm; toolsets por default `core,comments,sharing`).
+  No hardcodear el numero exacto de tools: `tools/list` es la verdad.
 
 ## Coherencia con el back
 

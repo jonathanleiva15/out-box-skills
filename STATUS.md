@@ -3,15 +3,14 @@
 > El estado del ecosistema completo (9 repos, entorno de pre-lanzamiento, bugs abiertos, drift) vive en
 > `../STATUS.md` (dashboard maestro de `Outboxmain\`, creado 2026-07-18). Acá solo lo local.
 >
-> **Pre-lanzamiento:** Outbox nunca salió a producción. Aparte del entorno de pre-lanzamiento
-> que responde en `out-box.dev`, lo publicado del ecosistema es este repo en GitHub (`main` en 1.5.1, último push 2026-08-05) y `@out-box/cli` en npm
-> (hasta 0.8.0).
+> **En produccion** desde 2026-10-09 (out-box.dev abierto). `@out-box/mcp` 0.3.1 en npm y el
+> MCP remoto en `mcp.out-box.dev`. `main` de este repo en 1.9.0 hasta que se mergeen los PRs
+> de 1.10.0 y 1.11.0.
 
 ## Estado actual
 
-- Skill **`outbox-publish` 1.10.0** (2026-10-10: links por destinatario con aviso y "¿quien no abrio?"; 1.9.0 conexion por link; 2026-10-01: Empresas v3 en `references/teams.md`; 1.7.0 local, 2026-09-30; GitHub `main` sigue en 1.5.1
-  hasta que se publique) — instalable via skills.sh
-  (`npx skills add jonathanleiva15/out-box-skills`). Repo `package.json` 0.4.0.
+- Skill **`outbox-publish` 1.11.0** (2026-10-09: toda la skill en ingles, MCP y remoto publicados, aperturas y Team por Contact us; 1.10.0: `references/offering.md`, que ofrecer y cuando; 2026-10-01: Empresas v3 en `references/teams.md`; 1.7.0 local, 2026-09-30; GitHub `main` en 1.9.0) — instalable via skills.sh
+  (`npx skills add jonathanleiva15/out-box-skills`). Repo `package.json` 0.5.0.
 - 1.7.0 (ronda 3, 2026-09-30): la skill queda alineada con el worker de la ronda 3:
   `409 version_conflict` con `currentVersion`/`currentEtag` e `If-Match` opaco,
   `Idempotency-Key` real (replay, `idempotency_key_reused`, `idempotency_in_progress`),
@@ -33,8 +32,7 @@
 - `references/api-reference.md` tiene un Indice al principio y headings con la ruta en
   markdown plano (`<user>` entre backticks, sin `&lt;`): la skill manda a buscar la seccion
   del endpoint con grep en vez de leer el archivo entero (el test lo fija).
-- Siguen sin documentar: password por pagina, reacciones, vistas/stats, passphrase de
-  share, registry de agentes (solo el step-up de `instantiate`) y la gestion de uploads
+- Siguen sin documentar: password por pagina, reacciones, registry de agentes (solo el step-up de `instantiate`) y la gestion de uploads
   (`GET /api/uploads`, `DELETE /api/uploads/:hash.:ext`, `POST /api/uploads/gc`): el critico
   de la ronda 3 monto las rutas (`features.uploadsManage: true`), asi que ya se pueden
   documentar.
@@ -50,8 +48,8 @@
 
 ## Pendientes
 
-- Publicar el repo y subir `capabilities.clients.skill.latest` (worker, hoy `1.5.1`) a
-  `1.7.0` en el mismo release, para que `outbox skill update` detecte el bump.
+- Al mergear a `main`, subir `capabilities.clients.skill.latest` en el worker (hoy `1.9.0`)
+  a la version mergeada (1.10.0 o 1.11.0), para que `outbox skill update` detecte el bump.
 - **Drift a vigilar** (codigo del worker sin deployar; re-sincronizar si cambia):
   - ~~`secretScan.appliesTo` = `['dailyAppend']`~~: el critico cableo publish y
     publish-from-template y actualizo la skill (regla 5, `content.md`, `api-reference.md`).
@@ -60,10 +58,10 @@
     central; `content.md` con `dailyAppend`/`comment`; `api-reference.md` en el append).
   - `features.idempotency` esta en `true` por coordinacion entre unidades: si vuelve a
     `false`, la skill ya condiciona el replay a ese flag.
-  - MCP remoto y plugin: cuando `clients.mcpRemote.available` pase a `true`, quitar el
-    "proximamente" de `SKILL.md` (regla 10), `sharing-and-keys.md` y `README.md`. Si el
-    remoto renombra o cura tools, revisar las menciones de tools en `comments.md`,
-    `page-data.md` y la tabla de toolsets.
+  - ~~MCP remoto: quitar el "proximamente"~~ (1.11.0). Falta el plugin: cuando
+    `out-box-plugin` sea publico y tenga marketplace, sacarle el "coming soon" en `SKILL.md`
+    (regla 10), `sharing-and-keys.md` y `README.md`. Si el remoto renombra o cura tools,
+    revisar las menciones de tools en `comments.md`, `page-data.md` y `sharing-and-keys.md`.
   - Uploads manage (`GET /api/uploads`, `DELETE /api/uploads/:hash.:ext`,
     `POST /api/uploads/gc`): ya montadas (`features.uploadsManage: true`); falta
     documentarlas en la skill. El DELETE y el GC con `apply` exigen `delete:<user>` amplio.
