@@ -60,6 +60,7 @@ endpoint's heading and read only from there to the next heading of the same leve
 | Page data and render watch | `/api/page-data`, `/api/page-data-policy`, `/api/render-report` |
 | Delete | `DELETE /api/u/<user>/<slug>` |
 | Agent-first automation (webhooks + schedules) | `/api/webhooks`, `/api/schedules` |
+| Following a page and alerts | `/api/follows`, `/api/me/follows`, `/api/me/slack` |
 | Teams / Orgs (Teams v2) | `/api/teams` (members, groups, company keys, transfer, template, domain, billing) |
 
 ## Global conventions
@@ -122,9 +123,18 @@ strings:
   "tier": "free",               // user's current tier
   "upgradeTo": "pro",           // next tier that LIFTS this limit (null if already at the top)
   "ctaUrl": "https://out-box.dev/pricing",  // null if no upgrade is possible
+  "upgradeUrl": "https://out-box.dev/pricing?from=limit&plan=pro", // ABSENT on team/unlimited or without upgrade
+  "fix": "Daily publish limit reached (10/10 on Free). Resets at 00:00 UTC (in 5h 12m). Pro unlocks 100 publishes/day (10/hour): https://out-box.dev/pricing?from=limit&plan=pro",
   "message": "..."              // legacy: human-readable copy of the gate
 }
 ```
+
+- **`fix`**: one sentence for the human: what happened, when it resets (if it does) and
+  what the next plan unlocks, with its link. Relay it as is (translated to the user's
+  language if needed); do not invent your own copy.
+- **`upgradeUrl`**: the link to give the human. Only on plan limits of the individual ladder;
+  it is absent (not `null`) on `team`/`unlimited`, when no plan lifts the limit, and on
+  anti-abuse rate limits. Older backends only send `ctaUrl`.
 
 The contract is **ADDITIVE**: legacy fields are preserved as is (old clients
 keep reading them). `upgradeTo`/`ctaUrl` stay `null` when the user is already on the
@@ -138,7 +148,7 @@ as an object `{ hour, day }` (legacy shape), overriding the CTA block's `number`
 ### GET /api/capabilities
 **Public** (no auth). Describes what the backend supports so clients (CLI, MCP,
 skill, rust, front) configure themselves without hardcoding. `cache-control: public,
-max-age=300`. Versioned shape with `version` (currently **12**; forward-compatible, tolerates
+max-age=300`. Versioned shape with `version` (currently **14**; forward-compatible, tolerates
 new fields).
 
 Returns, among others: `apiBase`/`siteBase`, `verbs`, `scopeFormat`,
@@ -1061,9 +1071,11 @@ Limits per tier (source: `lib/tier-limits.ts`):
 | free | 5 | 10 | 0.1 | 1 | 1 | 20 |
 | pro | 10 | 100 | 5 | ~unlimited (999) | 3 | 100 |
 | pro_plus | 30 | 500 | 25 | ~unlimited (999) | 10 | 300 |
-| team | 30 | 500 | 25 | ~unlimited (999) | 999 | 999 |
+| team | 300 | 5000 | 100 | ~unlimited (999) | 999 | 999 |
 | unlimited | 1000 | 20000 | 100 | ~unlimited (999) | 999 | 9999 |
 
+- **`team`**: Pro+ x10 for the WHOLE company (the quota is counted on the org, not per
+  member), up to 10 publishers (`409 seat_limit`, see Teams).
 - **`dailyUpdatesPerDay`**: cap on appends/updates per day to daily docs (DAU cap),
   enforced on EVERY append → `403 daily_updates_limit` when exceeded.
 - **`unlimited`** ("fully unrestricted"; current price at `https://out-box.dev/pricing`, do not
@@ -1248,6 +1260,8 @@ events (`WEBHOOK_EVENTS`, `lib/webhooks.ts`), 5 in total:
 | `page.published` | version 1 published as non-draft, or go-live of a draft (`PUT .../draft`) | `{ version, visibility, url }` |
 | `daily.appended` | append of a block to an owner's daily | `{ blockId, date, version, totalBlocks, label?, url }` |
 | `page.viewed` | a non-owner visitor's first view of the day (same viewer/day dedupe as the counter; no-op if `viewCount.track === false`) | `{ viewer, anonymous, url }` (`viewer` = username only on `private` pages viewed with the reader's credential; on `public`/`unlisted` always `null` + `anonymous: true`; no PII) |
+| `page.first_viewed` | the FIRST external open of the page, ever (not the owner nor org members): "the client opened the proposal" | `{ viewer, recipient, openedBy, anonymous, at, title, ... }` (`recipient` = the per-recipient link's name, or `null`) |
+| `form.submitted` | a visitor's entry in the page's data layer (`page-data.md`) | `{ seq, at, author: "visitor", untrusted: true, fields, first, changed, dataUrl }` (field NAMES only; `first` = the page's first entry; `changed` = names that changed since the previous entry) |
 
 Body of each delivery: `{ event, user, slug, timestamp, data }`. Headers:
 `X-Outbox-Signature: sha256=<hex>` = HMAC-SHA256 of the body actually sent, with the `secret`;
@@ -1286,6 +1300,38 @@ pause (`paused`).
 - **DELETE** `/api/schedules/<id>` — `{ ok, deleted: <id> }`; nonexistent → `404 not_found`.
 
 ---
+
+## Following a page and alerts
+
+Gated by `GET /api/capabilities` → `features.pageFollows` (Slack: `features.slackAlerts`);
+the live description is the `alerts` block of capabilities. Auth: a human session, or an API
+key with **`admin:self`** (following decides which emails reach the person, so a
+publish-only agent key cannot subscribe anyone). Without the index → `503 follows_unavailable`
+(`retryable: true`).
+
+### POST `/api/follows/<owner>/<slug>`
+Body `{ "following": true|false, "events"?: ["version", "comment"] }` → follows or unfollows.
+Requires being able to see the page now **and** lasting access (public/unlisted page, a
+grant or org membership): a share link alone is not enough → `403 follow_requires_access`.
+Other errors: `400 own_page` (the owner already gets the notices of their own pages),
+`400 invalid_events`, `404 post_not_found`, `409 followers_limit` (200 per page),
+`409 follows_limit` (500 per person). `GET` on the same path → `{ following, events,
+followers?, available }`.
+
+### GET /api/me/follows
+`{ follows: [{ owner, slug, events, createdAt, url }] }`.
+
+Notices are grouped: one message per person and page every ~5 minutes, never to whoever
+caused the change, never with comment text or form values. By email (category `follows`,
+opt-out `POST /api/me/email-prefs { "follows": false }`) and, if the person connected it,
+by Slack direct message.
+
+### GET · POST `/api/me/slack[/connect|/disconnect]`
+The person's own Slack, for direct messages from the Outbox app. `GET` → `{ available,
+connected, enabled, broken, teamName }`; `POST /api/me/slack/connect` → `{ url }` ("Add to
+Slack", **session only**: give the human out-box.dev, not a URL you build);
+`POST /api/me/slack { "enabled": boolean }`; `POST /api/me/slack/disconnect`. The owner who
+connects it gets there the opens, comments and submitted forms of their pages.
 
 ## Teams / Orgs (Teams v2)
 
@@ -1375,6 +1421,12 @@ The **owner** adds a member. **requireAuth** + actor-admin (human session or
   step_up_required` (retry with the TOTP the user gives you, never a recovery code).
 
 Response: `{ ok: true, user, role }`.
+
+**Publisher cap**: a company has at most **10 publishers** (members, owner included, plus
+pending invitations, which reserve a seat; re-inviting the same person does not count
+twice). Adding a member or inviting past that → `409 seat_limit`
+`{ error, limit: 10, used, message, contact: "hello@out-box.dev" }`. Do not retry: tell the
+user to remove someone or write to `contact` for a bigger plan.
 
 ### DELETE `/api/teams/<handle>/members/<user>`
 The **owner** removes a member. **requireAuth** + actor-admin + `isOwner`.

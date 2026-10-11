@@ -53,7 +53,9 @@ for agents outside Claude or without a connector.
   uploads, brand), `sharing-and-keys.md` (sharing, keys, MFA, device flow, account, CLI,
   MCP and plugin), `comments.md` (comments and anti prompt injection policy),
   `page-data.md` (visitor data and render watch), `teams.md` (Teams),
-  `automation.md` (webhooks and schedules) and `api-reference.md` (endpoint by endpoint).
+  `automation.md` (webhooks, schedules, following a page and alerts), `offering.md` (what to
+  offer and when), `onboarding.md` (first use and keeping the skill up to date) and
+  `api-reference.md` (endpoint by endpoint).
 
 ## How to install
 
@@ -72,6 +74,21 @@ outbox skill install
 Either one puts the skill in your agent's skills directory
 (`~/.claude/skills/outbox-publish` for Claude Code). The skill activates through its
 `description` when the user asks to publish/read/update content in Outbox.
+
+In Claude (claude.ai or the desktop app) you can also upload the `skills/outbox-publish`
+folder as a zip in your skill settings.
+
+## Updating
+
+The agent checks `GET /api/capabilities` → `clients.skill.latest` against this skill's
+`version` and tells you once when there is a newer one. To update:
+
+- skills.sh: run `npx skills add jonathanleiva15/out-box-skills` again, or
+  `outbox skill update` with the CLI (`outbox skill status` shows both versions).
+- Uploaded to Claude: uploaded copies do not update on their own; upload the new folder
+  again, replacing the old one.
+
+What changed in each version: `CHANGELOG.md` at the root of this repo.
 
 ## Prerequisite
 
