@@ -6,6 +6,21 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/). El repo sigue
 
 ## [Unreleased]
 
+## [0.6.0] · 2026-10-11
+
+### `outbox-publish` 1.12.0 · publicar sin cuenta (2026-10-11)
+
+- `README.md`: seccion "Without an account" con el `curl` a `POST /api/anon/publish`, el JSON
+  de respuesta (`url`, `expiresAt`, `ttlSeconds`, `claimToken`, `claimUrl`), los limites
+  (2 MiB de HTML o 256 KiB de markdown, 5 por hora y 20 por dia por IP mas el tope global,
+  `429` con `Retry-After`, `503 anon_paused`), las 72 h y dos reglas: pasarle al humano el
+  `claimUrl` y no el `claimToken`, y nunca publicar sin cuenta contenido con datos privados.
+  Menciona `outbox_publish_anonymous` del MCP local (0.4.0, solo sin key).
+- `references/api-reference.md`: seccion "Without an account" (con su fila en el Index):
+  `POST /api/anon/publish` (JSON, `text/html`, `text/markdown` y multipart), errores,
+  peek `GET /api/anon/<id>`, `POST /api/anon/<id>/delete`, `POST /api/anon/claim` y los
+  estados de `/p/<id>`. Gateado por `features.anonPublish` (hoy apagado en el back).
+
 ## [0.5.0] · 2026-10-09
 
 ### `outbox-publish` 1.11.0 · la skill pasa al ingles y se pone al dia (2026-10-09)

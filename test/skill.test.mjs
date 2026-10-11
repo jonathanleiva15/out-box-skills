@@ -66,10 +66,10 @@ function section(md, heading) {
   return md.slice(start, next < 0 ? undefined : next);
 }
 
-test('frontmatter: name, version 1.11.0 y description dentro del limite de 1024 chars', () => {
+test('frontmatter: name, version 1.12.0 y description dentro del limite de 1024 chars', () => {
   const fm = frontmatter(skill);
   assert.equal(field(fm, 'name'), 'outbox-publish');
-  assert.equal(field(fm, 'version'), '1.11.0');
+  assert.equal(field(fm, 'version'), '1.12.0');
   const desc = fm.split(/^description:\s*>-\n/m)[1];
   assert.ok(desc, 'description en bloque >-');
   const text = desc.split('\n').map((l) => l.trim()).join(' ').trim();
@@ -601,4 +601,31 @@ test('per-recipient links: unopened reminder, renewOnOpen, who has not opened it
   for (const needle of ['remindifunopenedhours', 'renewonopen', 'remindat', '?unopened=1', 'olderthanhours', '`opened`']) {
     assert.ok(api.includes(needle), `api-reference.md missing ${needle}`);
   }
+});
+
+test('1.12.0 · sin cuenta: publish anonimo de 72 h, claimUrl al humano y nunca datos privados', () => {
+  // Spec drafts anonimos (2026-10-11): POST /api/anon/publish sin key, 72 h, claimUrl.
+  const readme = flat(read(join(SKILL_DIR, 'README.md')));
+  const api = flat(section(refs['api-reference.md'], 'Without an account'));
+  for (const [name, doc] of [['README.md', readme], ['api-reference.md', api]]) {
+    for (const needle of [
+      'post https://api.out-box.dev/api/anon/publish',
+      '72 h',
+      'features.anonpublish',
+      'give the human the `claimurl`',
+      'never publish private data without an account',
+      '5 per hour and 20 per day per ip',
+      '256 kib of markdown',
+      'retry-after',
+      'anon_paused',
+    ]) {
+      assert.ok(doc.includes(needle), `${name} sin cuenta: falta ${needle}`);
+    }
+  }
+  assert.match(api, /never the bare `claimtoken`/);
+  for (const needle of ['get `/api/anon/<id>`', 'post `/api/anon/<id>/delete`', 'post /api/anon/claim', '`https://out-box.dev/p/<id>`']) {
+    assert.ok(api.includes(needle), `api-reference.md sin cuenta: falta ${needle}`);
+  }
+  assert.match(refs['api-reference.md'], /\| Without an account \|/);
+  assert.match(readme, /outbox_publish_anonymous/);
 });

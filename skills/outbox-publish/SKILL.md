@@ -1,6 +1,6 @@
 ---
 name: outbox-publish
-version: 1.11.0
+version: 1.12.0
 description: >-
   Publish, read, update and manage pages (HTML) in Outbox (out-box.dev), the user's
   private, agents-first online library, through the REST API with an `outbox_*` API
