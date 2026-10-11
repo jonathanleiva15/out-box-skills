@@ -42,6 +42,7 @@ This file has what you need in almost every task. Detail lives in `references/`:
 | Teams (invitations, admins, groups, company keys, public profile, per-recipient links and "did the client open it?", brand, domain, billing) | `references/teams.md` |
 | Event webhooks (Slack, Discord) and schedules | `references/automation.md` |
 | Which features to offer the user and when (per-recipient links, passphrase, forms, notifications) | `references/offering.md` |
+| No API key and the user has no account yet: publish without an account (72 h, the human claims it with `claimUrl`) | `references/api-reference.md`, section "Without an account" (only if `features.anonPublish` is true) |
 | Exact body, response and errors of an endpoint | `references/api-reference.md`: do not read it whole; search the heading (`grep -n "^#.*/append"`, see its Index) and read only that section |
 
 Self-discover the backend with `GET /api/capabilities` (public, no auth): verbs,
