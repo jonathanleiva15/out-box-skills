@@ -614,7 +614,7 @@ test('1.12.0 · sin cuenta: publish anonimo de 72 h, claimUrl al humano y nunca 
       'features.anonpublish',
       'give the human the `claimurl`',
       'never publish private data without an account',
-      '5 per hour and 20 per day per ip',
+      '2 per hour and 3 per day per ip',
       '256 kib of markdown',
       'retry-after',
       'anon_paused',

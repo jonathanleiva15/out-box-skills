@@ -117,9 +117,11 @@ and `multipart/form-data` with `file` also work. The response (`201`):
 ```
 
 - Anyone with the `url` can open the page until `expiresAt` (72 h); it is not in any library.
-- Limits: 2 MiB of HTML or 256 KiB of markdown (`413`), 5 per hour and 20 per day per IP
-  plus a global daily cap (`429` with `Retry-After`: wait, do not retry in a loop).
-  `503 anon_paused` means anonymous publishing is paused for now.
+- Limits: 2 MiB of HTML or 256 KiB of markdown (`413`), 2 per hour and 3 per day per IP,
+  5 per day per network (`429` with `Retry-After`: wait, do not retry in a loop).
+  `503 anon_paused` means the global daily cap was reached or publishing is paused.
+- The page cannot send data anywhere: images must be inline `data:` URIs, and scripts,
+  styles and fonts load only from cdnjs, jsDelivr, unpkg or Google Fonts.
 - **Give the human the `claimUrl`, not the `claimToken`**: opening it lets them save the page
   to their account before it expires. The token is in the URL fragment; do not paste it
   anywhere else.

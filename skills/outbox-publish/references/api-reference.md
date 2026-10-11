@@ -427,7 +427,7 @@ Anonymous drafts: a page published with **no key** that lives **72 hours** at
 `https://out-box.dev/p/<id>`, and that the human can then save to their account
 ("claim"). Only usable when `GET /api/capabilities` → `features.anonPublish` is `true`
 (limits in `anonPublishLimits`: `htmlMaxBytes`, `markdownMaxBytes`, `ttlSeconds`,
-`perHour`, `perDay`, `globalPerDay`, `contentTypes`, `claimPageUrl`).
+`perHour`, `perDay`, `contentTypes`, `claimPageUrl`).
 
 Rules for the agent:
 
@@ -473,10 +473,11 @@ per day. Errors:
 
 | Status | `error` | Meaning |
 |---|---|---|
-| 400 | `missing_content`, `conflicting_content`, `invalid_title`, `invalid_json` | Fix the body |
+| 400 | `missing_content`, `conflicting_content`, `invalid_title`, `invalid_json` | Fix the body (titles cannot contain control or bidi characters) |
 | 403 | `anon_publish_disabled` | Anonymous publishing is off on this backend. Do not retry |
 | 413 | `html_too_large` | Over 2 MiB of HTML or 256 KiB of markdown. Not a plan limit |
-| 429 | `rate_limited` | Over 5 per hour and 20 per day per IP (IPv6 counted by /64), or the global daily cap (default 2000). Wait `Retry-After`; do not retry in a loop |
+| 415 | `unsupported_file_type` | Multipart file is not `.html`, `.htm`, `.md`, `.markdown` or `.txt`, or the content has null bytes |
+| 429 | `rate_limited` | Over 2 per hour and 3 per day per IP (IPv6 counted by /64), or 5 per day per network. Wait `Retry-After`; do not retry in a loop |
 | 503 | `anon_paused` | Paused for now. Try later |
 
 ### GET `/api/anon/<id>`
