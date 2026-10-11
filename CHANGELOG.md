@@ -6,6 +6,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/). El repo sigue
 
 ## [Unreleased]
 
+- `references/sharing-and-keys.md`: el MCP remoto ahora lista los links no abiertos y, con el permiso
+  `outbox:share`, crea y lista links por destinatario (out-box-mcp-remote #3 y #4). Sin cambio de version
+  de la skill: es un dato del connector, no un cambio de comportamiento del agente.
+
 ## [0.6.0] · 2026-10-11
 
 ### `outbox-publish` 1.12.0 · lo nuevo del back, onboarding y aviso de version (2026-10-11)
