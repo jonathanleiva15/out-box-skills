@@ -235,7 +235,7 @@ subscription is tied to the org `UserRecord`, not to the person.
   opens through a per-recipient link come as `link:<recipient>`). It works with
   `audit:self`, with the read-only verb `views` (new agent keys have it, in their own
   namespace and folders) or with any key that can read the page (`list`); otherwise
-  `403 forbidden` with a `hint`. CLI: `outbox opens <slug>`; MCP: `outbox_page_views`.
+  `403 forbidden` with a `hint`. CLI (>= 0.9.0): `outbox opens <slug>`; MCP: `outbox_page_views`.
   `GET /api/share` also returns, per link, `opens: { count, firstAt, lastAt }` (`null` =
   not opened yet). Whoever created the link gets an email on each new open (one per link,
   person and day); they turn it off with `POST /api/me/email-prefs { "opens": false }`. Views by the owner and by org members do NOT count. On
