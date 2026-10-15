@@ -66,10 +66,10 @@ function section(md, heading) {
   return md.slice(start, next < 0 ? undefined : next);
 }
 
-test('frontmatter: name, version 1.13.0 y description dentro del limite de 1024 chars', () => {
+test('frontmatter: name, version 1.13.1 y description dentro del limite de 1024 chars', () => {
   const fm = frontmatter(skill);
   assert.equal(field(fm, 'name'), 'outbox-publish');
-  assert.equal(field(fm, 'version'), '1.13.0');
+  assert.equal(field(fm, 'version'), '1.13.1');
   const desc = fm.split(/^description:\s*>-\n/m)[1];
   assert.ok(desc, 'description en bloque >-');
   const text = desc.split('\n').map((l) => l.trim()).join(' ').trim();
@@ -188,7 +188,12 @@ test('AX-12.5: ante un 429 no se reintenta en loop', () => {
 
 test('seguridad de keys: se recomienda publish,list acotada y nunca exponer el plaintext', () => {
   const sec = flat(section(skill, 'Security'));
-  assert.match(sec, /--verbs publish,list/);
+  // Hallazgo 10-experiencia-agente #1: la key de agente (claim) no trae genkey, asi que
+  // la regla 1 no puede mandar a correr gen-agent como si funcionara con ella.
+  assert.match(sec, /connection link gives an agent key/);
+  assert.match(sec, /`outbox keys gen-agent` needs a human key/);
+  assert.match(flat(refs['api-reference.md']), /--verbs publish,list/);
+  assert.match(flat(refs['sharing-and-keys.md']), /missingscope: "genkey:<u>"/);
   assert.match(sec, /only in `authorization: bearer`/);
   assert.match(flat(refs['sharing-and-keys.md']), /the plaintext is shown \*\*only once\*\*/);
 });
@@ -676,4 +681,14 @@ test('1.13.0 · sin cuenta: publish anonimo de 72 h, claimUrl al humano y nunca 
   }
   assert.match(refs['api-reference.md'], /\| Without an account \|/);
   assert.match(readme, /outbox_publish_anonymous/);
+});
+
+test('r1 · consentimiento del remoto lista outbox:share y lo que no tiene la CLI 0.8.0 dice >= 0.9.0', () => {
+  const sk = flat(refs['sharing-and-keys.md']);
+  assert.match(sk, /`outbox:delete`, `outbox:share`; `share` is never preselected/);
+  assert.match(sk, /\*\*cli >= 0\.9\.0 only\*\* \(npm still serves 0\.8\.0/);
+  assert.match(sk, /`outbox init` \(auth \+ style \+ welcome page \+ skill; cli >= 0\.9\.0\)/);
+  assert.match(flat(refs['offering.md']), /--recipient "laura · acme"` with cli >= 0\.9\.0/);
+  assert.match(flat(refs['offering.md']), /`outbox opens <slug>` in the cli >= 0\.9\.0/);
+  assert.match(flat(refs['teams.md']), /cli \(>= 0\.9\.0\): `outbox opens <slug>`/);
 });

@@ -89,7 +89,12 @@ Who has access to a page: `GET /api/u/<user>/<slug>/access` (see `api-reference.
   a key with loose scopes (`list:u`, `delete:u:own`) gives `403 folder_escalation`
   `{ allowedFolders }`. Use `folder` within your folders (in `POST /api/keys/agent`) or
   ask the user to issue it themselves.
-- **Agent key** (recommended shortcut): `POST /api/keys/agent` — scope `genkey:u`:
+- **Agent key** (recommended shortcut): `POST /api/keys/agent` — scope `genkey:u`, which
+  only a **human** key has (or the web session at out-box.dev/settings/keys). The key that
+  the connection link (`outbox login`, `outbox setup`, claim) gives is an agent key without
+  `genkey`: from it, `POST /api/keys/agent` and `outbox keys gen-agent` respond `403 forbidden`
+  with `missingScope: "genkey:<u>"`. Do not retry: the human picks the verbs and expiry when
+  approving the connection link, and creates a folder-confined key at out-box.dev/settings/keys.
   ```json
   { "label": "briefing-agent", "folder": "briefings", "days": 30,
     "verbs": ["publish", "list"] }
@@ -126,10 +131,11 @@ rotating them (`POST /api/keys/rotate`) and instantiating an agent from the regi
    `reason: "code_already_used"`, ask the user for the **next** code from their app.
 - **Do not ask for a recovery code.** The backend accepts it, but it is a single-use factor that
   bypasses login MFA: it must not go through the chat or the transcript. If the user
-  does not have the app at hand, they should do the operation themselves (web, or CLI with `--mfa-code`).
+  does not have the app at hand, they should do the operation themselves (web, or CLI >= 0.9.0 with `--mfa-code`).
   If they paste one anyway, do not use it: tell them it is now exposed and that they should regenerate their codes.
 - Do not store the code, log it, publish it or reuse it in another request.
-- CLI: `--mfa-code <code>` on the same commands. Accounts without MFA see no change.
+- CLI (**>= 0.9.0**; npm still serves 0.8.0, which does not have it): `--mfa-code <code>` on the
+  same commands. Accounts without MFA see no change.
 
 Scope format: `<verb>:<user>[:<modifier|f/folder>]`. Verbs:
 `publish | delete | list | template | genkey | admin | audit | folder | share | upload`.
@@ -176,8 +182,13 @@ to create a key by hand or paste it into the chat.
 ## The ways to use Outbox
 
 - **CLI** (`outbox ...`): shell commands (`outbox publish`, `outbox list`,
-  `outbox export`, `outbox share <slug> --recipient "<name>" --passphrase <phrase>`,
-  `outbox opens <slug>`, ...). Reads the key from `~/.outboxrc`.
+  `outbox export`, `outbox share <slug>`, ...). Reads the key from `~/.outboxrc`.
+  **CLI >= 0.9.0 only** (npm still serves 0.8.0; check `outbox --version`): the commands
+  `pull`, `open`, `views`/`opens`, `responses`, `teams`, `anon` and `init`, and the flags
+  `--recipient`, `--passphrase`, `--idempotency-key`, `--reject-on-secrets`, `--dry-run`,
+  `--yes`, `--create-only`, `--apply-attributes` and `--mfa-code`
+  (e.g. `outbox share <slug> --recipient "<name>" --passphrase <phrase>`, `outbox opens <slug>`).
+  With 0.8.0, use the HTTP endpoint this skill documents instead.
 - **Skill** `outbox-publish` (this one): HTTP requests described in these files.
 - **Local MCP** (`@out-box/mcp`, stdio, with API key): published on npm. Suggest it
   while `GET /api/capabilities` → `clients.mcp.available` is `true`, using
@@ -186,7 +197,8 @@ to create a key by hand or paste it into the chat.
   out-box.dev, no API key): live. Suggest it while `clients.mcpRemote.available` is
   `true`; in Claude the user adds it as a custom connector with that URL. In the consent
   screen the user chooses what Claude can do (`outbox:read`, `outbox:write`,
-  `outbox:delete`) and revokes it from their account; if a tool responds `401`, the
+  `outbox:delete`, `outbox:share`; `share` is never preselected and is needed for
+  per-recipient links) and revokes it from their account; if a tool responds `401`, the
   connector must be reconnected (do not ask for an API key).
 - **Claude plugin** `out-box` (bundles the remote MCP as a connector with the commands
   `/out-box:publish`, `/out-box:daily` and `/out-box:library`): **coming soon**, not
@@ -236,7 +248,7 @@ skill are distributed separately. If it is not there:
 - `npm i -g @out-box/cli` (installs the `outbox` binary), or
 - `npx skills add jonathanleiva15/out-box-skills` for the skill.
 
-With the CLI you get `outbox init` (auth + style + welcome page + skill) and
+With the CLI you get `outbox init` (auth + style + welcome page + skill; CLI >= 0.9.0) and
 `outbox update` / `outbox skill status` to keep the CLI and skill up to date (how to update
 each install route: `onboarding.md`). If you only work
 over HTTP you do not need it.

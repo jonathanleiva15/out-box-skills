@@ -10,6 +10,24 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/). El repo sigue
   `outbox:share`, crea y lista links por destinatario (out-box-mcp-remote #3 y #4). Sin cambio de version
   de la skill: es un dato del connector, no un cambio de comportamiento del agente.
 
+## [0.7.1] · 2026-10-15
+
+### `outbox-publish` 1.13.1 · correcciones de la revision de experiencia del agente (2026-10-15)
+
+- `SKILL.md`, regla de seguridad 1: ya no manda a correr `outbox keys gen-agent` como primer paso.
+  La key que da el link de conexion (claim, `outbox login`/`setup`) es de agente y no trae
+  `genkey`, asi que ese comando le daba `403` (`missingScope: genkey:<u>`). Ahora dice que esa key
+  ya es acotada (el humano elige los verbos al aprobar), que la key de una sola carpeta se crea en
+  out-box.dev/settings/keys y que `gen-agent` necesita una key humana. Mismo aviso en
+  `sharing-and-keys.md` (seccion "Agent key") y en `api-reference.md` (export).
+- `sharing-and-keys.md`: la pantalla de consentimiento del MCP remoto lista `outbox:share`
+  (nunca viene preseleccionado; hace falta para links por destinatario).
+- Comandos y flags que la CLI publicada en npm (0.8.0) no tiene quedan marcados "CLI >= 0.9.0":
+  `pull`, `open`, `views`/`opens`, `responses`, `teams`, `anon`, `init` y los flags
+  `--recipient`, `--passphrase`, `--idempotency-key`, `--reject-on-secrets`, `--dry-run`, `--yes`,
+  `--create-only`, `--apply-attributes` y `--mfa-code` (`sharing-and-keys.md`, `offering.md`,
+  `teams.md`). Verificado contra el `dist/` del paquete `@out-box/cli@0.8.0` y `cli/src/index.ts` de main.
+
 ## [0.7.0] · 2026-10-11
 
 ### `outbox-publish` 1.13.0 · publicar sin cuenta (2026-10-11)
