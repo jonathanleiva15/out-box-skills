@@ -447,6 +447,14 @@ Rules for the agent:
 - **Never publish private data without an account**: anyone with the link can open the
   page. No personal data, client data, credentials or internal documents.
 - If there is a key, use `POST /publish` (private by default, versioned) instead.
+- **Human check** (`anonPublishLimits.humanCheck.enabled: true`): without a Turnstile token
+  the page is born `"state": "pending"` (not served) and the response adds `verifyUrl`,
+  `ttlSeconds: 3600` and `ttlAfterVerifySeconds: 259200`. A person opens `verifyUrl`
+  (`https://out-box.dev/p/<id>/verify#<claimToken>`), passes Turnstile, and the page goes live
+  for 72 h. Unconfirmed pages are deleted after 1 h. Show `verifyUrl` to the human; never try
+  to solve the check yourself. `POST /api/anon/<id>/verify {claimToken, turnstileToken}` is
+  what that page calls.
+- `<meta http-equiv="refresh" content="…url=…">` → `400 redirect_not_allowed`.
 
 ### POST /api/anon/publish
 **Public** (no auth). Accepts:
