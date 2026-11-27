@@ -139,6 +139,12 @@ and `multipart/form-data` with `file` also work. The response (`201`):
   `503 anon_paused` means the global daily cap was reached or publishing is paused.
 - The page cannot send data anywhere: images must be inline `data:` URIs, and scripts,
   styles and fonts load only from cdnjs, jsDelivr, unpkg or Google Fonts.
+- **Human check**: if the response has `"state": "pending"` and a `verifyUrl`, the page is
+  NOT visible yet. A person has to open `verifyUrl` in a browser and pass a quick check
+  (Cloudflare Turnstile) within 1 hour, or the page is deleted; after that it lives 72 h. You
+  cannot do this step: show the `verifyUrl` to your user. With a key there is no such step.
+- No redirects: `<meta http-equiv="refresh" content="…url=…">` is rejected (`400
+  redirect_not_allowed`), and external links show a "You're leaving Outbox" warning.
 - **Give the human the `claimUrl`, not the `claimToken`**: opening it lets them save the page
   to their account before it expires. The token is in the URL fragment; do not paste it
   anywhere else.
